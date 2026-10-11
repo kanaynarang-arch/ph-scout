@@ -1,7 +1,6 @@
 import {
   APP_PUBLIC_URL,
   NOTIFY_COOLDOWN_SECONDS,
-  NOTIFY_DAILY_CAP,
   NOTIFY_TIMEOUT_MS,
   NOTIFY_TOP_N,
   TELEGRAM_PART_LIMIT,
@@ -81,12 +80,6 @@ function founderText(f: ScoredLaunch["founders"]): string {
 
 // Times in the message are shown in IST (UTC+5:30, no daylight saving), the way Kavya reads them.
 const IST_OFFSET_MS = 5.5 * 3600 * 1000;
-/** The IST calendar day (YYYY-MM-DD): the daily send limit resets at midnight IST. */
-export const istDay = (d: Date) => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
-export const secondsToIstMidnight = (d: Date) => {
-  const shifted = d.getTime() + IST_OFFSET_MS;
-  return Math.ceil((Math.floor(shifted / 86_400_000 + 1) * 86_400_000 - shifted) / 1000);
-};
 export const ist = (d: Date) => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16).replace("T", " ") + " IST";
 
 interface Entry {
@@ -201,30 +194,23 @@ export async function sendEmail(cfg: NonNullable<NotifyConfig["email"]>, msg: Bu
 }
 
 // ---------------------------------------------------------------- limiter (atomic claim)
-export type ClaimResult = { ok: true } | { ok: false; reason: "cooldown" | "daily_cap" | "unavailable"; retryInSeconds?: number };
+export type ClaimResult = { ok: true } | { ok: false; reason: "cooldown" | "unavailable"; retryInSeconds?: number };
 
 export interface Limiter {
-  /** Atomically takes one send slot (1 per 5 minutes, 10 per IST day). A taken slot is never given back. */
+  /** Atomically takes one send slot (1 per 5 minutes). A taken slot is never given back. */
   claim(): Promise<ClaimResult>;
 }
 
 /** In-memory limiter with the same rules as the Neon one. Used by tests; the claim section is synchronous (atomic). */
 export function memoryLimiter(clock: () => Date): Limiter {
   let last: number | null = null;
-  let day = "";
-  let count = 0;
   return {
     async claim() {
       const now = clock().getTime();
-      const d = istDay(clock());
-      const dayCount = day === d ? count : 0;
-      if (dayCount >= NOTIFY_DAILY_CAP) return { ok: false, reason: "daily_cap", retryInSeconds: secondsToIstMidnight(clock()) };
       if (last !== null && now - last < NOTIFY_COOLDOWN_SECONDS * 1000) {
         return { ok: false, reason: "cooldown", retryInSeconds: Math.ceil((last + NOTIFY_COOLDOWN_SECONDS * 1000 - now) / 1000) };
       }
       last = now;
-      day = d;
-      count = dayCount + 1;
       return { ok: true };
     },
   };

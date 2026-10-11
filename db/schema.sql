@@ -17,7 +17,5 @@ CREATE TABLE IF NOT EXISTS launch_seen (
 -- Claimed atomically with a single conditional UPDATE ... RETURNING. Holds no message text and no addresses.
 CREATE TABLE IF NOT EXISTS notify_control (
   key text PRIMARY KEY,
-  last_sent_at timestamptz,
-  day date,
-  day_count integer NOT NULL DEFAULT 0
+  last_sent_at timestamptz
 );

@@ -165,7 +165,6 @@ export default function Page() {
     if (!n) return null;
     const where = n.channels?.length === 2 ? "Telegram and email" : n.channels?.[0] === "telegram" ? "Telegram" : "email";
     if (n.status === "sending") return `Copy being sent to Kavya's ${where}`;
-    if (n.status === "daily_cap") return "Not sent: daily limit reached";
     if (n.status === "cooldown" && noticeUntil !== null) {
       const left = Math.ceil((noticeUntil - clock) / 1000);
       if (left > 0) return `Not sent: next copy in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;

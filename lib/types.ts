@@ -80,7 +80,7 @@ export interface ScoredLaunch {
 
 export type Source = "LIVE" | "CACHED" | "SAMPLE";
 
-export type NotificationStatus = "sending" | "cooldown" | "daily_cap" | "off" | "skipped_sample" | "skipped";
+export type NotificationStatus = "sending" | "cooldown" | "off" | "skipped_sample" | "skipped";
 
 /** Result of the "send a copy to Kavya" decision for this request. Never contains secrets or addresses. */
 export interface Notification {
