@@ -6,8 +6,8 @@
 
 ## 30-second demo path
 
-1. Open the public URL and click **Generate**. The page turns into a dashboard: sidebar filters, a stat strip, the "Where the points come from" chart (hover for the numbers), top-score bars, a category donut and a "Start here" card for the rank 1 launch. The ranked list follows.
-2. Point at the **source badge** (LIVE / CACHED / SAMPLE) with the "data as of" time and its age (under the page title), and the coverage card ("N of M launches counted").
+1. Open the public URL and click **Generate**. The page turns into a dashboard: sidebar filters, four KPI tiles, the "Where the points come from" chart (hover for the numbers), top-score bars, a category donut and a "Start here" card for the rank 1 launch. The ranked list follows.
+2. Point at the **source badge** (LIVE / CACHED / SAMPLE) with its fetch time (bottom of the sidebar), and the coverage card ("N of M launches counted").
 3. Open a row: the six case fields, the **urgency badge**, the fit tag with its reason, and the **outreach angle with its quote** ("From the launch page", checked by code; "Unverified" if it could not be matched).
    Press **Draft email** or **Draft short DM** to get an editable first message to the founder. The tool only writes it (Gemini Flash, no founder names; the page fills in the first name); Kavya edits it, copies it and sends it herself.
 4. Expand a row, then **How this was scored** (upvotes + maker comments only) and try the category filters in the sidebar (tick more than one) and the fit switch (they only hide rows). The four case categories are always scanned; "Add optional categories" lets Kavya also scan up to 2 extras (Sales tools, Marketing tools, Analytics, AI tools), which are off by default.

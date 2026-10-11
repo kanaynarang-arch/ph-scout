@@ -61,7 +61,7 @@ describe("runScout", () => {
     const bad = await runScout({ now: NOW, deps: deps(false) });
     expect(bad.ai.available).toBe(false);
     expect(bad.warnings[0]).toMatch(/AI summaries unavailable/);
-    expect(bad.ranked.every((r) => r.ai.angle === "No angle available. Review the launch page")).toBe(true);
+    expect(bad.ranked.every((r) => r.ai.angle === "No angle available — review the launch page")).toBe(true);
     (store.clear(), _clearLocks());
     const good = await runScout({ now: NOW, deps: deps(true) });
     expect(bad.ranked.map((r) => r.id)).toEqual(good.ranked.map((r) => r.id));

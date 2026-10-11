@@ -26,7 +26,7 @@ export function urgencyFor(days: number): Urgency {
 }
 
 export const URGENCY_LABEL: Record<Urgency, string> = {
-  hot: "Hot: contact now",
+  hot: "Hot — contact now",
   week: "Contact this week",
   closing: "Window closing",
 };
