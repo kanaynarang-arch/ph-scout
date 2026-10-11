@@ -52,7 +52,7 @@ export function isRealGenerate(headers: Headers, refresh: boolean): boolean {
 // ---------------------------------------------------------------- message building
 const FIT_LABEL: Record<ScoredLaunch["ai"]["fit"], string> = {
   strong: "Strong fit",
-  possible: "Complementary fit",
+  possible: "Partial fit",
   weak: "Weak fit",
   competitor: "Likely competitor",
   unrated: "Not rated",

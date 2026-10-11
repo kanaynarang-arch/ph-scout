@@ -7,7 +7,7 @@ import type { ScoredLaunch, ScoutResponse } from "@/lib/types";
 
 const LAST_VISIT_KEY = "ph-scout:lastVisit";
 const URGENCY_TEXT = { hot: "Hot — contact now", week: "Contact this week", closing: "Window closing" } as const;
-const FIT_TEXT = { strong: "Strong fit", possible: "Complementary fit", weak: "Weak fit", competitor: "Likely competitor", unrated: "Not rated" } as const;
+const FIT_TEXT = { strong: "Strong fit", possible: "Partial fit", weak: "Weak fit", competitor: "Likely competitor", unrated: "Not rated" } as const;
 
 /** Copy text to the clipboard, with a fallback for browsers that block the async clipboard API. */
 async function copyText(text: string): Promise<boolean> {
@@ -482,7 +482,7 @@ export default function Page() {
     rows.filter(
       (r) =>
         (allCats || r.categories.some((c) => cats.includes(c))) &&
-        (!fitOnly || r.ai.fit === "strong" || r.ai.fit === "possible") &&
+        (!fitOnly || (r.ai.fit !== "weak" && r.ai.fit !== "competitor")) && // unrated rows (AI down) stay visible
         (recency === "any" || r.urgency === recency) &&
         (!hideContacted || !contacted[r.id]) &&
         matchesQuery(r, query),
@@ -567,7 +567,7 @@ export default function Page() {
   const fitSwitch = (
     <label className="switch">
       <input type="checkbox" checked={fitOnly} disabled={!data?.ai.available} onChange={(e) => setFitOnly(e.target.checked)} />
-      Strong and complementary fit only
+      Hide weak fits and competitors
     </label>
   );
   const contactedCount = data ? [...data.ranked, ...data.tooEarly, ...data.moreLaunches].filter((r) => contacted[r.id]).length : 0;
