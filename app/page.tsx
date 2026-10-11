@@ -37,13 +37,27 @@ function HowScored({ r }: { r: ScoredLaunch }) {
 }
 
 function Row({ r, rank, showNew, aiShown }: { r: ScoredLaunch; rank?: number; showNew: boolean; aiShown: boolean }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const copy = async () => {
+    let ok = false;
     try {
       await navigator.clipboard.writeText(r.ai.angle);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch { /* clipboard unavailable */ }
+      ok = true;
+    } catch {
+      // Fallback for browsers that block the async clipboard API.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = r.ai.angle;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch { /* nothing else to try */ }
+    }
+    setCopied(ok ? "ok" : "fail");
+    setTimeout(() => setCopied(null), 2000);
   };
   return (
     <article className="row">
@@ -85,7 +99,7 @@ function Row({ r, rank, showNew, aiShown }: { r: ScoredLaunch; rank?: number; sh
               {r.ai.quoteStatus === "verified" ? "From the launch page" : "Unverified"}: “{r.ai.evidenceQuote}”
             </div>
           )}
-          <button style={{ marginTop: 8, padding: "4px 10px", fontSize: 13 }} onClick={copy}>{copied ? "Copied" : "Copy angle"}</button>
+          <button style={{ marginTop: 8, padding: "4px 10px", fontSize: 13 }} onClick={copy}>{copied === "ok" ? "Copied" : copied === "fail" ? "Copy failed: select the text" : "Copy angle"}</button>
         </div>
       )}
       {!r.votesHidden && <HowScored r={r} />}
