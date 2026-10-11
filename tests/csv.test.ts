@@ -45,14 +45,14 @@ describe("toCsv", () => {
     const csv = toCsv([{ rank: 1, launch: row({ name: "First" }) }, { rank: 2, launch: row({ name: "Second" }) }]);
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(CSV_HEADER.join(","));
-    expect(lines[1].startsWith("1,First,")).toBe(true);
-    expect(lines[2].startsWith("2,Second,")).toBe(true);
+    expect(lines[1].startsWith("1,1,First,")).toBe(true);
+    expect(lines[2].startsWith("2,2,Second,")).toBe(true);
     expect(lines[3]).toBe("");
     expect(lines.length).toBe(4);
   });
   it("exports the documented columns", () => {
     const [, line] = toCsv([{ rank: 7, launch: row() }]).split("\r\n");
-    expect(line).toBe("7,Tool,Ada (+1 hidden),Does things,10,3,3,55.5,no,Strong fit,Your tool X; our standups Y,does things well,https://www.producthunt.com/products/tool");
+    expect(line).toBe("1,7,Tool,Ada (+1 hidden),Does things,10,3,3,55.5,no,Strong fit,Your tool X; our standups Y,does things well,https://www.producthunt.com/products/tool");
   });
   it("says 'not counted' and yes for provisional rows", () => {
     const [, line] = toCsv([{ rank: 1, launch: row({ makerComments: null, provisional: true }) }]).split("\r\n");
@@ -67,9 +67,9 @@ describe("toCsv", () => {
     expect(line).toContain(`"'=cmd|""/c calc"""`);
     expect(line).toContain('"Line one\nline two"');
   });
-  it("leaves rank, score and provisional blank for hidden-vote rows", () => {
+  it("keeps the position but leaves overall rank, score and provisional blank for hidden-vote rows", () => {
     const [, line] = toCsv([{ rank: null, launch: row({ votesHidden: true, votesCount: 0 }) }]).split("\r\n");
-    expect(line.startsWith(",Tool,")).toBe(true);
+    expect(line.startsWith("1,,Tool,")).toBe(true);
     expect(line).toContain(",votes hidden,");
   });
   it("shows no quote for rows without one", () => {

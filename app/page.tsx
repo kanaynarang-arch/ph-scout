@@ -784,6 +784,16 @@ export default function Page() {
                     </div>
                   </div>
                   <p className="hint">In order of score. Filters and search only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
+                  <details className="fit-guide">
+                    <summary>What do the fit tags mean?</summary>
+                    <dl>
+                      <dt>Strong fit</dt><dd>Serves remote or distributed teams and sits next to async standups, so a partnership makes sense for both sides.</dd>
+                      <dt>Partial fit</dt><dd>The audience overlaps with remote teams, but the link to standups is indirect.</dd>
+                      <dt>Weak fit</dt><dd>Little audience overlap or no clear reason to partner.</dd>
+                      <dt>Likely competitor</dt><dd>Does the same job as an async standup tool.</dd>
+                    </dl>
+                    <p>The tags come from Gemini Flash reading the launch text. They never change the order: rank is only upvotes and maker comments.</p>
+                  </details>
                   {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
                   {ranked.length > 0 && (
                     <div className="table">

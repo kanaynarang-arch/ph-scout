@@ -139,7 +139,7 @@ export function categoriesOf(l: Pick<Launch, "topics" | "viaSlugs">, scanned?: C
 }
 
 export function founderInfo(l: Pick<Launch, "makers" | "hunter">) {
-  const visible = l.makers.filter((m) => m.name && !/redacted/i.test(m.name));
+  const visible = l.makers.filter((m) => m.name?.trim() && !/redacted/i.test(m.name)).map((m) => ({ ...m, name: m.name.trim() }));
   const hiddenCount = l.makers.length - visible.length;
   const names = visible.map((m) => m.name);
   const hunter = names.length === 0 && l.hunter && !/redacted/i.test(l.hunter.name) ? l.hunter.name : null;

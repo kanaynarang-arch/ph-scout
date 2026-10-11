@@ -273,6 +273,17 @@ a.brand:focus-visible { outline: 2px solid var(--mint); outline-offset: 4px; }
 .panel { padding: 24px 0 8px; }
 .panel > .listhead, .panel > .hint, .panel > .empty { margin-left: 28px; margin-right: 28px; }
 .listhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 4px; }
+.fit-guide { margin: 0 28px 12px; font-size: 13px; line-height: 20px; color: var(--t2); }
+.panel > .fit-guide { margin-left: 28px; margin-right: 28px; }
+.fit-guide > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 8px; color: var(--mint-t); font-weight: 500; list-style: none; }
+.fit-guide > summary::-webkit-details-marker { display: none; }
+.fit-guide > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 200ms var(--spring); }
+.fit-guide[open] > summary::before { transform: rotate(45deg); }
+.fit-guide:not([open]) { margin-bottom: 8px; }
+.fit-guide dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 10px 0 8px; }
+.fit-guide dt { color: var(--t1); font-weight: 600; }
+.fit-guide dd { margin: 0; }
+.fit-guide p { margin: 0; color: var(--t3); font-size: 12px; }
 .listhead .right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 h2 { font-size: 22px; line-height: 28px; display: flex; align-items: center; gap: 12px; }
 h2 .count { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--t1); background: rgba(62, 232, 200, 0.16); border-radius: 999px; padding: 0 10px; line-height: 22px; font-variant-numeric: tabular-nums; }
@@ -436,7 +447,9 @@ button.small.accent:hover:not(:disabled) { background: rgba(255, 176, 46, 0.12);
   .m-brand { display: flex; margin-bottom: 14px; }
   .m-filters { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
   .panel { padding-top: 20px; }
-  .panel > .listhead, .panel > .hint, .panel > .empty { margin-left: 18px; margin-right: 18px; }
+  .panel > .listhead, .panel > .hint, .panel > .empty, .panel > .fit-guide { margin-left: 18px; margin-right: 18px; }
+  .fit-guide dl { grid-template-columns: 1fr; gap: 0; }
+  .fit-guide dd { margin-bottom: 8px; }
   .c-detail { grid-template-columns: minmax(0, 1fr); margin-top: 4px; }
   .more > summary { padding: 18px; }
   .landing { padding: 8px 16px 72px; }

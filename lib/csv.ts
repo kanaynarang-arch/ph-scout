@@ -3,7 +3,9 @@ import type { ScoredLaunch } from "./types";
 // Client-side CSV export of the rows currently visible on the page. Only data already on the page.
 
 export const CSV_HEADER = [
-  "rank",
+  "#", // position in this file (1 to n)
+  "overall rank", // rank in the full list; it skips numbers when a filter hides rows
+
   "product name",
   "founder(s)",
   "one-line description",
@@ -75,7 +77,7 @@ export function rowToCells({ rank, launch: r }: CsvRow): Cell[] {
 
 /** CSV text (CRLF line endings) for the given rows, in the given order. */
 export function toCsv(rows: CsvRow[]): string {
-  return [csvLine([...CSV_HEADER]), ...rows.map((r) => csvLine(rowToCells(r)))].join("\r\n") + "\r\n";
+  return [csvLine([...CSV_HEADER]), ...rows.map((r, i) => csvLine([i + 1, ...rowToCells(r)]))].join("\r\n") + "\r\n";
 }
 
 /** "1 row" / "5 rows". */
