@@ -38,7 +38,7 @@ export function csvLine(cells: Cell[]): string {
 
 const FIT_LABEL: Record<ScoredLaunch["ai"]["fit"], string> = {
   strong: "Strong fit",
-  possible: "Possible fit",
+  possible: "Complementary fit",
   weak: "Weak fit",
   competitor: "Likely competitor",
   unrated: "Not rated",
