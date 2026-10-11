@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { CATEGORIES, EXTRA_CATEGORIES, MAX_EXTRAS, categoryLabel, parseExtras, type CategoryId, type ExtraCategoryId } from "@/lib/categories";
 import { rowsLabel, toCsv, type CsvRow } from "@/lib/csv";
+import { MAX_IMPORT_BYTES, daysLeftText, exportContacted, mergeContacted, parseContactedImport } from "@/lib/contacted";
 import type { ScoredLaunch, ScoutResponse } from "@/lib/types";
 
 const LAST_VISIT_KEY = "ph-scout:lastVisit";
@@ -203,7 +204,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacte
           <div className="ms ms-score"><b>{r.votesHidden ? "–" : <Score value={r.score} animate={index !== undefined && index < 10} />}</b><span>{r.provisional ? "Score · provisional" : "Score"}</span></div>
           <div className="ms"><b>{r.votesHidden ? "hidden" : r.votesCount}</b><span>Upvotes</span></div>
           <div className="ms" title={r.makerCommentsStale ? "Saved copy older than 6 hours; it will be refreshed on a later run" : undefined}><b>{r.makerComments === null ? "–" : r.makerComments}</b><span>{r.makerComments === null ? "Maker comments · not counted" : r.makerCommentsStale ? "Maker comments · cached" : "Maker comments"}</span></div>
-          <div className="ms"><b>{r.daysSinceLaunch}</b><span>Days since launch</span></div>
+          <div className="ms" title="Product Hunt gives launch dates by day, so this is approximate. Outreach works best inside the first 7 days."><b>{r.daysSinceLaunch}</b><span>Days since launch</span><em className={`dl${daysLeftText(r.daysSinceLaunch).closing ? " closing" : ""}`}>{daysLeftText(r.daysSinceLaunch).text}</em></div>
         </div>
       </div>
       <button className="c-toggle" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? "Hide" : "Show"} details for ${r.name}`} onClick={() => setOpen(!open)}>
@@ -395,12 +396,15 @@ export default function Page() {
       if (v && typeof v === "object" && !Array.isArray(v)) setContacted(Object.fromEntries(Object.entries(v).filter(([k, t]) => typeof k === "string" && typeof t === "string")) as Record<string, string>);
     } catch { /* storage blocked or bad value */ }
   }, []);
+  const persistContacted = (next: Record<string, string>) => {
+    try { localStorage.setItem(CONTACTED_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+  };
   const toggleContacted = (id: string) =>
     setContacted((cur) => {
       const next = { ...cur };
       if (next[id]) delete next[id];
       else next[id] = new Date().toISOString();
-      try { localStorage.setItem(CONTACTED_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+      persistContacted(next);
       return next;
     });
   useEffect(() => {
@@ -528,6 +532,39 @@ export default function Page() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     flash(`Downloaded ${rowsLabel(rows.length)}`);
   };
+  // Kavya's "contacted" notes live only in this browser. Export and import let her keep or move them; the file stays on her computer.
+  const exportContactedFile = () => {
+    const names: Record<string, string> = {};
+    if (data) for (const r of [...data.ranked, ...data.tooEarly, ...data.moreLaunches]) names[r.id] = r.name;
+    const blob = new Blob([exportContacted(contacted, names)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ph-scout-contacted-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    flash(`Saved ${Object.keys(contacted).length} contacted ${Object.keys(contacted).length === 1 ? "note" : "notes"}`);
+  };
+  const importContactedFile = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (file.size > MAX_IMPORT_BYTES) return flash("That file is too big to be a contacted list");
+      const parsed = parseContactedImport(await file.text());
+      if (!parsed) return flash("That is not a contacted list saved by this tool");
+      const merged = mergeContacted(contacted, parsed);
+      const added = Object.keys(merged).length - Object.keys(contacted).length;
+      setContacted(merged);
+      persistContacted(merged);
+      flash(`Imported ${Object.keys(parsed).length} notes (${added} new)`);
+    };
+    input.click();
+  };
   const exportCount = data ? ranked.length + tooEarly.length + (moreOpen ? more.length : 0) : 0;
 
   const catCount = (id: CategoryId) => (data ? data.ranked.filter((r) => r.categories.includes(id)).length : 0);
@@ -576,6 +613,12 @@ export default function Page() {
       <input type="checkbox" checked={hideContacted} disabled={contactedCount === 0 && !hideContacted} onChange={(e) => setHideContacted(e.target.checked)} />
       Hide contacted{contactedCount ? ` (${contactedCount})` : ""}
     </label>
+  );
+  const contactedIO = (
+    <div className="cio">
+      <button type="button" onClick={exportContactedFile} disabled={Object.keys(contacted).length === 0}>Export contacted</button>
+      <button type="button" onClick={importContactedFile}>Import</button>
+    </div>
   );
   const recencyPicker = (
     <div className="recency" role="group" aria-label="Launched">
@@ -673,6 +716,7 @@ export default function Page() {
                 <p className="micro nav-h">View</p>
                 <div className="side-switch">{fitSwitch}</div>
                 <div className="side-switch">{contactedSwitch}</div>
+                <div className="side-switch">{contactedIO}</div>
                 {recencyPicker}
                 {extraPicker}
               </nav>
@@ -771,6 +815,7 @@ export default function Page() {
                   </div>
                   {fitSwitch}
                   {contactedSwitch}
+                  {contactedIO}
                   {recencyPicker}
                   <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
                   {notice && <p className="notice" role="status">{notice}</p>}

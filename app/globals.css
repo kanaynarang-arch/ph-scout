@@ -498,3 +498,10 @@ button.small.accent:hover:not(:disabled) { background: rgba(255, 176, 46, 0.12);
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* ---- days left caption, contacted export/import ---- */
+.ms em.dl { font-style: normal; font-size: 11.5px; line-height: 16px; color: var(--t3); margin-top: 2px; }
+.ms em.dl.closing { color: var(--amber-t); }
+.cio { display: flex; gap: 16px; padding: 0 4px; }
+.cio button { height: auto; min-height: 0; padding: 2px 0; background: none; border: 0; border-radius: 6px; color: var(--mint-t); font-size: 12.5px; line-height: 18px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.cio button:disabled { color: var(--t3); text-decoration: none; cursor: default; }
