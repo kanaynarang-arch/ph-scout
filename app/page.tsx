@@ -60,8 +60,8 @@ function Score({ value, animate }: { value: number; animate: boolean }) {
 /** A monogram tile: first letter on a muted tint derived from the name (no images, nothing fetched). */
 function Tile({ name }: { name: string }) {
   let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 110;
-  h += 150; // greens, teals, blues and violets only
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 120;
+  h += 165; // teals, blues, indigos and purples only
   const letter = (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
   return <span className="tile" aria-hidden="true" style={{ "--h": h } as React.CSSProperties}>{letter}</span>;
 }
@@ -160,7 +160,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
         {r.votesHidden ? <div className="hidden">votes hidden</div> : <Ring value={r.score} provisional={r.provisional} animate={index !== undefined && index < 10} />}
       </div>
       <button className="c-toggle" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? "Hide" : "Show"} details for ${r.name}`} onClick={() => setOpen(!open)}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
       </button>
       {open && (
         <div className="c-detail" id={detailId}>
@@ -317,7 +317,7 @@ export default function Page() {
 
   return (
     <>
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#6ee7b7" /><stop offset="1" stopColor="#10b981" /></linearGradient></defs></svg>
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#7aeaa0" /><stop offset="1" stopColor="#30d158" /></linearGradient></defs></svg>
       <div className="topbar">
         <div className="topbar-in">
           <div className="brand"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></div>
@@ -337,15 +337,17 @@ export default function Page() {
         {showHero && (
           <section className="hero">
             <div className="hero-copy">
-            <div className="micro">Partnerships · last 7 days on Product Hunt</div>
+            <p className="eyebrow">Partnerships · last 7 days on Product Hunt</p>
             <h1>Find the launches worth a conversation.</h1>
             <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
             <div className="hero-actions">
               <button className="primary big" onClick={() => run(false)}>Generate</button>
-              <span className="hint">Takes up to a minute the first time.</span>
+              <a className="link" href="#how">How it ranks <span aria-hidden="true">›</span></a>
             </div>
+            <p className="hint">Takes up to a minute the first time.</p>
             </div>
             <div className="frame" aria-hidden="true">
+              <div className="fr-bar"><i /><i /><i /></div>
               {[0, 1, 2].map((i) => (
                 <div key={i} className={`fr-row fr-${i}`}>
                   <span className="fr-tile" /><span className="fr-lines"><i /><i /></span>
@@ -353,10 +355,10 @@ export default function Page() {
                 </div>
               ))}
             </div>
-            <ol className="steps">
-              <li><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
-              <li><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
-              <li><span className="micro">03 · Suggest</span><p>Gemini Flash writes an outreach angle backed by a quote from the launch page. It never changes the rank.</p></li>
+            <ol className="steps" id="how">
+              <li><span className="ico ico-blue" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
+              <li><span className="ico ico-green" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 16V9M10 16V4M16 16v-5" /></svg></span><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
+              <li><span className="ico ico-indigo" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 5h12v8H9l-3.5 3v-3H4z" /></svg></span><span className="micro">03 · Suggest</span><p>Gemini Flash writes an outreach angle backed by a quote from the launch page. It never changes the rank.</p></li>
             </ol>
           </section>
         )}
@@ -384,7 +386,7 @@ export default function Page() {
             )}
 
             <div className="toolbar">
-              <div className="chips" role="group" aria-label="Categories">
+              <div className="seg" role="group" aria-label="Categories">
                 <button className={`chip ${cat === "all" ? "on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All <span className="n">{data.ranked.length}</span></button>
                 {CATEGORIES.map((c) => (
                   <button key={c.id} className={`chip ${cat === c.id ? "on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
