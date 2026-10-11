@@ -65,22 +65,6 @@ function Tile({ name }: { name: string }) {
   return <span className="tile" aria-hidden="true" style={{ "--h": hues[h % hues.length] } as React.CSSProperties}>{letter}</span>;
 }
 
-/** Score ring: the arc is the score out of 100. */
-function Ring({ value, provisional, animate }: { value: number; provisional: boolean; animate: boolean }) {
-  const r = 24;
-  const c = 2 * Math.PI * r;
-  const pct = Math.max(0, Math.min(100, value));
-  return (
-    <div className={`ring${provisional ? " prov" : ""}`}>
-      <svg viewBox="0 0 60 60" aria-hidden="true">
-        <circle className="trk" cx="30" cy="30" r={r} />
-        <circle className={`prg${animate ? " go" : ""}`} cx="30" cy="30" r={r} strokeDasharray={`${(c * pct) / 100} ${c}`} transform="rotate(-90 30 30)" />
-      </svg>
-      <span className="score"><Score value={value} animate={animate} /></span>
-    </div>
-  );
-}
-
 /** Search by product name, one-liner or visible founder names (case-insensitive). Only hides rows. */
 function matchesQuery(r: ScoredLaunch, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -213,14 +197,14 @@ function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacte
             {unverified && <span className="pill p-unverified">Unverified quote</span>}
           </>
         ) : <span className="noangle">No angle for this launch</span>}
-        <p className="meta-line">
-          <span>{r.votesHidden ? <b>votes hidden</b> : <><b>{r.votesCount}</b> upvotes</>}</span>
-          <span>{r.makerComments === null ? <>maker comments <b title="Maker comments not counted">not counted</b></> : <><b>{r.makerComments}</b> maker comments</>}{r.makerCommentsStale && <em className="stale" title="Saved copy older than 6 hours; it will be refreshed on a later run"> (CACHED)</em>}</span>
-          <span><b>{r.daysSinceLaunch}</b> days since launch</span>
-        </p>
       </div>
       <div className="c-score">
-        {r.votesHidden ? <div className="hidden">votes hidden</div> : <Ring value={r.score} provisional={r.provisional} animate={index !== undefined && index < 10} />}
+        <div className={`mstats${r.provisional ? " prov" : ""}`}>
+          <div className="ms ms-score"><b>{r.votesHidden ? "–" : <Score value={r.score} animate={index !== undefined && index < 10} />}</b><span>{r.provisional ? "Score · provisional" : "Score"}</span></div>
+          <div className="ms"><b>{r.votesHidden ? "hidden" : r.votesCount}</b><span>Upvotes</span></div>
+          <div className="ms" title={r.makerCommentsStale ? "Saved copy older than 6 hours; it will be refreshed on a later run" : undefined}><b>{r.makerComments === null ? "–" : r.makerComments}</b><span>{r.makerComments === null ? "Maker comments · not counted" : r.makerCommentsStale ? "Maker comments · cached" : "Maker comments"}</span></div>
+          <div className="ms"><b>{r.daysSinceLaunch}</b><span>Days since launch</span></div>
+        </div>
       </div>
       <button className="c-toggle" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? "Hide" : "Show"} details for ${r.name}`} onClick={() => setOpen(!open)}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
@@ -405,7 +389,6 @@ export default function Page() {
   const [hideContacted, setHideContacted] = useState(false);
   const [query, setQuery] = useState("");
   const [recency, setRecency] = useState<"any" | "hot" | "week" | "closing">("any"); // filter by how recently a launch happened (only hides rows)
-  const [insightsOpen, setInsightsOpen] = useState(false);
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem(CONTACTED_KEY) ?? "{}");
@@ -586,7 +569,6 @@ export default function Page() {
       Hide contacted{contactedCount ? ` (${contactedCount})` : ""}
     </label>
   );
-  const activeFilters = cats.length + (fitOnly ? 1 : 0) + (hideContacted ? 1 : 0) + (recency !== "any" ? 1 : 0) + (query.trim() ? 1 : 0);
   const recencyPicker = (
     <div className="recency" role="group" aria-label="Launched">
       <p className="micro nav-h">Launched</p>
@@ -675,9 +657,8 @@ export default function Page() {
             {data && (
               <nav aria-label="Sections and filters">
                 <p className="micro nav-h">Overview</p>
-                <a className="nav on" href="#overview">Overview</a>
+                <a className="nav on" href="#overview">Dashboard</a>
                 <a className="nav" href="#list">Ranked list <span className="n">{data.ranked.length}</span></a>
-                <a className="nav" href="#insights" onClick={() => setInsightsOpen(true)}>Insights</a>
                 {data.tooEarly.length > 0 && <a className="nav" href="#early">Too early <span className="n">{data.tooEarly.length}</span></a>}
                 {data.moreLaunches.length > 0 && <a className="nav" href="#more" onClick={() => setMoreOpen(true)}>More launches <span className="n">{data.moreLaunches.length}</span></a>}
                 <p className="micro nav-h">Categories</p>
@@ -727,58 +708,7 @@ export default function Page() {
                   <div className="kpi k-purple"><span className="ico ico-purple" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1 1 1.500 1.500 1.500C10.500 7 10 5 10 3z" /></svg></span><div className="kn">{hotRows.length}</div><div className="kl">Contact now</div></div>
                 </section>
 
-                <details className="m-filters mfilters">
-                  <summary>Filters{activeFilters ? ` (${activeFilters} on)` : ""}</summary>
-                  <div className="mf-body">
-                  <div className="seg" role="group" aria-label="Categories, pick one or more">
-                    <button className={`chip ${allCats ? "on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All <span className="n">{data.ranked.length}</span></button>
-                    {availableCats.map((c) => (
-                      <button key={c.id} className={`chip ${cats.includes(c.id) ? "on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
-                    ))}
-                  </div>
-                  {fitSwitch}
-                  {contactedSwitch}
-                  {recencyPicker}
-                  <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
-                  {notice && <p className="notice" role="status">{notice}</p>}
-                  </div>
-                </details>
-
-                <section className="panel flat" id="list">
-                  <div className="listhead">
-                    <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
-                    <div className="right">
-                      <input type="search" className="search" placeholder="Search product or founder" aria-label="Search the list by product or founder" value={query} onChange={(e) => setQuery(e.target.value)} />
-                      <span className="micro">Sorted by score</span>
-                    </div>
-                  </div>
-                  <p className="hint">In order of score. Filters and search only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
-                  {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
-                  {ranked.length > 0 && (
-                    <div className="table">
-                      <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Score</span><span /></div>
-                      {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}
-                    </div>
-                  )}
-                </section>
-
-                {data.tooEarly.length > 0 && (
-                  <section className="panel flat" id="early">
-                    <div className="listhead"><h2>Too early to rank <span className="count">{tooEarly.length}</span></h2></div>
-                    <p className="hint">Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
-                    <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
-                  </section>
-                )}
-
-                {data.moreLaunches.length > 0 && (
-                  <details className="panel flat more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
-                    <summary>More launches ({more.length}), in score order, without an angle</summary>
-                    <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
-                  </details>
-                )}
-                <details className="panel flat insights" id="insights" open={insightsOpen} onToggle={(e) => setInsightsOpen(e.currentTarget.open)}>
-                  <summary>Insights: where the points come from, who to contact first, category mix</summary>
-                  <section className="bento" aria-label="Insights">
+                  <section className="bento" id="insights" aria-label="Insights">
                   <div className="card flat c-chart">
                     <div className="card-h"><h3>Where the points come from</h3><span className="micro">Top {Math.min(10, data.ranked.length)} launches</span></div>
                     <AreaChart rows={data.ranked.slice(0, 10)} />
@@ -826,7 +756,54 @@ export default function Page() {
                     </div>
                   )}
                 </section>
-                </details>
+
+                <div className="m-filters">
+                  <div className="seg" role="group" aria-label="Categories, pick one or more">
+                    <button className={`chip ${allCats ? "on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All <span className="n">{data.ranked.length}</span></button>
+                    {availableCats.map((c) => (
+                      <button key={c.id} className={`chip ${cats.includes(c.id) ? "on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
+                    ))}
+                  </div>
+                  {fitSwitch}
+                  {contactedSwitch}
+                  {recencyPicker}
+                  <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
+                  {notice && <p className="notice" role="status">{notice}</p>}
+                </div>
+
+                <section className="panel flat" id="list">
+                  <div className="listhead">
+                    <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
+                    <div className="right">
+                      <input type="search" className="search" placeholder="Search product or founder" aria-label="Search the list by product or founder" value={query} onChange={(e) => setQuery(e.target.value)} />
+                      <span className="micro">Sorted by score</span>
+                    </div>
+                  </div>
+                  <p className="hint">In order of score. Filters and search only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
+                  {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
+                  {ranked.length > 0 && (
+                    <div className="table">
+                      <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Score and activity</span><span /></div>
+                      {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}
+                    </div>
+                  )}
+                </section>
+
+                {data.tooEarly.length > 0 && (
+                  <section className="panel flat" id="early">
+                    <div className="listhead"><h2>Too early to rank <span className="count">{tooEarly.length}</span></h2></div>
+                    <p className="hint">Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
+                    <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
+                  </section>
+                )}
+
+                {data.moreLaunches.length > 0 && (
+                  <details className="panel flat more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+                    <summary>More launches ({more.length}), in score order, without an angle</summary>
+                    <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
+                  </details>
+                )}
+
               </>
             )}
 
