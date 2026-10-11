@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { csvCell, csvLine, neutraliseFormula, toCsv, CSV_HEADER } from "../lib/csv";
+import { csvCell, csvLine, neutraliseFormula, rowsLabel, toCsv, CSV_HEADER } from "../lib/csv";
 import type { ScoredLaunch } from "../lib/types";
 
 const row = (over: Partial<ScoredLaunch> = {}): ScoredLaunch => ({
@@ -77,4 +77,12 @@ describe("toCsv", () => {
     expect(line).toContain("our standups Y,,https://");
   });
   it("csvLine joins cells with commas", () => expect(csvLine(["a", 1, null, "b,c"])).toBe('a,1,,"b,c"'));
+});
+
+describe("rowsLabel", () => {
+  it("is singular for 1 and plural otherwise", () => {
+    expect(rowsLabel(1)).toBe("1 row");
+    expect(rowsLabel(0)).toBe("0 rows");
+    expect(rowsLabel(60)).toBe("60 rows");
+  });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CATEGORIES, categoryLabel, type CategoryId } from "@/lib/categories";
-import { toCsv, type CsvRow } from "@/lib/csv";
+import { rowsLabel, toCsv, type CsvRow } from "@/lib/csv";
 import type { ScoredLaunch, ScoutResponse } from "@/lib/types";
 
 const LAST_VISIT_KEY = "ph-scout:lastVisit";
@@ -184,7 +184,7 @@ export default function Page() {
   const copyCsv = async () => {
     const rows = csvRows();
     const ok = await copyText(toCsv(rows));
-    flash(ok ? `Copied ${rows.length} rows` : "Copy failed: use Download CSV instead");
+    flash(ok ? `Copied ${rowsLabel(rows.length)}` : "Copy failed: use Download CSV instead");
   };
   const downloadCsv = () => {
     const rows = csvRows();
@@ -197,7 +197,7 @@ export default function Page() {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    flash(`Downloaded ${rows.length} rows`);
+    flash(`Downloaded ${rowsLabel(rows.length)}`);
   };
   const exportCount = data ? ranked.length + tooEarly.length + (moreOpen ? more.length : 0) : 0;
 
@@ -249,7 +249,7 @@ export default function Page() {
           <div className="bar" style={{ margin: "6px 0 2px" }}>
             <button onClick={copyCsv} disabled={exportCount === 0}>Copy as CSV</button>
             <button onClick={downloadCsv} disabled={exportCount === 0}>Download CSV</button>
-            <span className="meta" role="status" aria-live="polite">{exportMsg ?? `Exports the ${exportCount} visible rows`}</span>
+            <span className="meta" role="status" aria-live="polite">{exportMsg ?? `Exports the ${rowsLabel(exportCount)} currently visible`}</span>
           </div>
           {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
           {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown />)}

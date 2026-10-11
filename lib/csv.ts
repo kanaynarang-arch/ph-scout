@@ -77,3 +77,6 @@ export function rowToCells({ rank, launch: r }: CsvRow): Cell[] {
 export function toCsv(rows: CsvRow[]): string {
   return [csvLine([...CSV_HEADER]), ...rows.map((r) => csvLine(rowToCells(r)))].join("\r\n") + "\r\n";
 }
+
+/** "1 row" / "5 rows". */
+export const rowsLabel = (n: number): string => `${n} ${n === 1 ? "row" : "rows"}`;
