@@ -8,6 +8,8 @@ A ranked outreach list for Kavya, who leads partnerships at a B2B SaaS company t
 
 Components Map: [docs/components-map.png](docs/components-map.png)
 
+The UI follows general dashboard patterns (cards, pills, chips) with original CSS; nothing was copied.
+
 ## How it works
 
 1. **Generate** (Kavya) calls `POST /api/scout`. The four categories are built in (`lib/categories.ts`).
