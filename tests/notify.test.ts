@@ -135,7 +135,7 @@ describe("maybeNotify decides who gets a send", () => {
     await h.settle();
     const text = String(h.f.calls[0].body.text);
     expect(text).toContain("angle unavailable");
-    expect(text).not.toContain("AI suggestion");
+    expect(text).not.toContain("Your tool");
     expect(text).toContain("Not rated");
   });
 });
@@ -371,13 +371,16 @@ describe("message content", () => {
   const msg = () => buildMessage(data(), new Date("2026-10-11T12:05:00Z"));
   it("has the required header, source line, top 10 only, and footer", () => {
     const m = msg();
-    expect(m.text).toContain("PH Scout: your list (Generate clicked 2026-10-11 17:35 IST)");
-    expect(m.text).toContain("Source: LIVE, fetched 2026-10-11 17:30 IST");
+    expect(m.text).toContain("Partnership Scout: your outreach shortlist");
+    expect(m.text).toContain("You clicked Generate on 2026-10-11 17:35 IST");
+    expect(m.text).toContain("Data: LIVE, fetched 2026-10-11 17:30 IST");
+    expect(m.text).toContain("ranked by upvotes and maker comments");
     expect(m.rows).toBe(10);
     expect(m.text).toContain("#10 Product 10");
     expect(m.text).not.toContain("#11 ");
-    expect(m.text).toContain("Open the app: https://ph-scout.vercel.app");
-    expect(m.text).toContain("For you only. Nothing was sent to anyone else.");
+    expect(m.text).toContain("Full list, filters and draft messages: https://ph-scout.vercel.app");
+    expect(m.text).toContain("never change the order");
+    expect(m.text).toContain("This copy was sent only to you. Nothing was sent to any founder.");
   });
   it("has rank, name, founders, score, upvotes, maker comments, days, fit, AI-marked angle and link", () => {
     const first = msg().text.split("\n\n").find((b) => b.startsWith("#1 "))!;
@@ -385,29 +388,30 @@ describe("message content", () => {
     expect(first).toContain("score 89.0");
     expect(first).toContain("99 upvotes");
     expect(first).toContain("11 maker comments");
-    expect(first).toContain("day 3");
+    expect(first).toContain("launched 3 days ago");
+    expect(first).toContain("What it is: x");
     expect(first).toContain("Strong fit");
-    expect(first).toContain("AI suggestion: Your tool 1; our standups help");
+    expect(first).toContain("Suggested angle (AI): Your tool 1; our standups help");
     expect(first).toContain("https://www.producthunt.com/products/p1");
   });
   it("marks provisional scores and uncounted maker comments", () => {
     const d = data();
     d.ranked[0] = row(1, { provisional: true, makerComments: null });
     const text = buildMessage(d, new Date()).text;
-    expect(text).toContain("score 89.0 (provisional)");
-    expect(text).toContain("maker comments not counted");
+    expect(text).toContain("score 89.0 out of 100 (provisional)");
+    expect(text).toContain("maker comments not counted yet");
   });
   it("shows every time in IST (UTC+5:30), including across midnight, and never as UTC", () => {
     expect(ist(new Date("2026-10-11T12:05:00Z"))).toBe("2026-10-11 17:35 IST");
     expect(ist(new Date("2026-10-11T19:00:00Z"))).toBe("2026-10-12 00:30 IST"); // rolls into the next IST day
     const m = buildMessage(data({ fetchedAt: "2026-10-11T19:00:00.000Z" }), new Date("2026-10-11T20:10:00Z"));
-    expect(m.text).toContain("Generate clicked 2026-10-12 01:40 IST");
+    expect(m.text).toContain("You clicked Generate on 2026-10-12 01:40 IST");
     expect(m.text).toContain("fetched 2026-10-12 00:30 IST");
     expect(m.subject).toContain("2026-10-12 01:40 IST");
     expect(m.text + m.html + m.subject).not.toContain("UTC");
   });
   it("says CACHED honestly", () => {
-    expect(buildMessage(data({ source: "CACHED" }), new Date()).text).toContain("Source: CACHED (saved copy)");
+    expect(buildMessage(data({ source: "CACHED" }), new Date()).text).toContain("Data: CACHED (saved copy)");
   });
   it("labels a hunter as a hunter and never invents founder contact details", () => {
     const d = data();
@@ -431,7 +435,7 @@ describe("message content", () => {
     d.ranked[0] = row(1, { name: "N".repeat(500), ai: { ...row(1).ai, angle: "word ".repeat(500) + "\u0000\u0007" } });
     const text = buildMessage(d, new Date()).text;
     const e = text.split("\n\n").find((b) => b.startsWith("#1 "))!;
-    expect(e.split("\n")[0].length).toBeLessThanOrEqual(90);
+    expect(e.split("\n")[0].length).toBeLessThanOrEqual(100); // "#1 " + name (80) + " (fit label)"
     expect(e).not.toMatch(/[\u0000-\u0008]/);
     expect(clean("a\n\n  b\tc", 50)).toBe("a b c");
     expect(clean("x".repeat(20), 10).length).toBe(10);

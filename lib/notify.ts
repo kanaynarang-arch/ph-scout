@@ -7,6 +7,7 @@ import {
 } from "./config";
 import type { Notification, ScoredLaunch, ScoutResponse } from "./types";
 import { NO_ANGLE } from "./verify";
+import { CATEGORIES, categoryLabel } from "./categories";
 
 // Sends a copy of the list that the server just built to Kavya's OWN Telegram and email.
 // Triggered only by a real Generate. The client supplies no text and no recipients.
@@ -84,25 +85,24 @@ export const ist = (d: Date) => new Date(d.getTime() + IST_OFFSET_MS).toISOStrin
 
 interface Entry {
   title: string;
+  about: string;
   founders: string;
-  facts: string;
+  why: string;
   angle: string;
   link: string;
 }
 
+const launchedText = (days: number) => (days <= 0 ? "launched today" : days === 1 ? "launched 1 day ago" : `launched ${days} days ago`);
+
 function entryOf(r: ScoredLaunch, rank: number): Entry {
   const angleMissing = r.ai.fit === "unrated" || r.ai.angle === NO_ANGLE || !r.ai.angle;
+  const comments = r.makerComments === null ? "maker comments not counted yet" : `${r.makerComments} maker comments`;
   return {
-    title: `#${rank} ${clean(r.name, 80)}`,
+    title: `#${rank} ${clean(r.name, 80)} (${FIT_LABEL[r.ai.fit]})`,
+    about: clean(r.ai.oneLiner || r.tagline, 160),
     founders: founderText(r.founders),
-    facts: [
-      `score ${r.score.toFixed(1)}${r.provisional ? " (provisional)" : ""}`,
-      `${r.votesCount} upvotes`,
-      `${r.makerComments === null ? "maker comments not counted" : `${r.makerComments} maker comments`}`,
-      `day ${r.daysSinceLaunch}`,
-      FIT_LABEL[r.ai.fit],
-    ].join(" · "),
-    angle: angleMissing ? "angle unavailable" : `AI suggestion: ${clean(r.ai.angle, 300)}`,
+    why: `score ${r.score.toFixed(1)} out of 100${r.provisional ? " (provisional)" : ""}, from ${r.votesCount} upvotes and ${comments}; ${launchedText(r.daysSinceLaunch)}`,
+    angle: angleMissing ? "angle unavailable, open the launch page" : clean(r.ai.angle, 300),
     link: safeLink(r.url),
   };
 }
@@ -118,22 +118,33 @@ export interface BuiltMessage {
 export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_PUBLIC_URL): BuiltMessage {
   const top = data.ranked.slice(0, NOTIFY_TOP_N);
   const entries = top.map((r, i) => entryOf(r, i + 1));
-  const header = `PH Scout: your list (Generate clicked ${ist(clickedAt)})`;
-  const source = `Source: ${data.source}${data.source === "CACHED" ? " (saved copy)" : ""}, fetched ${ist(new Date(data.fetchedAt))}`;
-  const footer = [`Open the app: ${appUrl}`, "For you only. Nothing was sent to anyone else."];
+  const core = CATEGORIES.map((c) => c.label).join(", ").replace(/, ([^,]*)$/, " and $1");
+  const extras = (data.extras ?? []).map((id) => categoryLabel(id));
+  const where = extras.length ? `${core}, plus the optional categories you switched on (${extras.join(", ")})` : core;
+  const header = "Partnership Scout: your outreach shortlist";
+  const intro =
+    `You clicked Generate on ${ist(clickedAt)}. Below are the top ${entries.length} of ${data.ranked.length} Product Hunt launches from the last 7 days ` +
+    `(${ist(new Date(data.window.from))} to ${ist(new Date(data.window.to))}) in ${where}, ranked by upvotes and maker comments.`;
+  const source = `Data: ${data.source}${data.source === "CACHED" ? " (saved copy)" : ""}, fetched ${ist(new Date(data.fetchedAt))}.`;
+  const howTo =
+    "How to read this: the score (0 to 100) uses only upvotes and maker comments. The fit tags and angles are AI suggestions from Gemini Flash and never change the order. " +
+    "Reach out to the founders yourself while they are in their first week.";
+  const footer = [howTo, `Full list, filters and draft messages: ${appUrl}`, "This copy was sent only to you. Nothing was sent to any founder."];
 
-  const entryText = (e: Entry) => [e.title, `Founders: ${e.founders}`, e.facts, e.angle, e.link].filter(Boolean).join("\n");
+  const entryText = (e: Entry) =>
+    [e.title, `What it is: ${e.about}`, `Founders: ${e.founders}`, `Why it ranks here: ${e.why}`, `Suggested angle (AI): ${e.angle}`, e.link].filter(Boolean).join("\n");
   const body = entries.map(entryText);
-  const text = [header, source, "", ...body.flatMap((b) => [b, ""]), ...footer].join("\n");
+  const lead = [header, intro, source].join("\n\n");
+  const text = [lead, "", ...body.flatMap((b) => [b, ""]), ...footer.flatMap((f) => [f, ""])].join("\n").trimEnd() + "\n";
 
   // Telegram: plain text (no parse_mode), split at entry boundaries under the limit.
   const telegramParts: string[] = [];
-  let current = [header, source, ""].join("\n");
+  let current = lead;
   const flush = () => {
     if (current.trim()) telegramParts.push(current.trimEnd());
     current = "";
   };
-  for (const b of [...body, footer.join("\n")]) {
+  for (const b of [...body, footer.join("\n\n")]) {
     const piece = b.length > TELEGRAM_PART_LIMIT ? b.slice(0, TELEGRAM_PART_LIMIT - 1) + "…" : b;
     if (current && (current + "\n\n" + piece).length > TELEGRAM_PART_LIMIT) flush();
     current = current ? current + "\n\n" + piece : piece;
@@ -142,15 +153,16 @@ export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_
   const parts = telegramParts.length > 1 ? telegramParts.map((p, i) => `${p}\n\n(part ${i + 1} of ${telegramParts.length})`) : telegramParts;
 
   const li = (e: Entry) =>
-    `<li><strong>${escapeHtml(e.title)}</strong><br>Founders: ${escapeHtml(e.founders)}<br>${escapeHtml(e.facts)}<br>${escapeHtml(e.angle)}` +
+    `<li style="margin-bottom:14px"><strong>${escapeHtml(e.title)}</strong><br>What it is: ${escapeHtml(e.about)}<br>Founders: ${escapeHtml(e.founders)}<br>` +
+    `Why it ranks here: ${escapeHtml(e.why)}<br>Suggested angle (AI): ${escapeHtml(e.angle)}` +
     (e.link ? `<br><a href="${escapeHtml(e.link)}">${escapeHtml(e.link)}</a>` : "") +
     "</li>";
   const html =
     `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.45">` +
-    `<h2 style="font-size:17px">${escapeHtml(header)}</h2><p>${escapeHtml(source)}</p><ol>${entries.map(li).join("")}</ol>` +
-    `<p>Open the app: <a href="${escapeHtml(appUrl)}">${escapeHtml(appUrl)}</a><br>${escapeHtml(footer[1])}</p></div>`;
+    `<h2 style="font-size:17px">${escapeHtml(header)}</h2><p>${escapeHtml(intro)}</p><p>${escapeHtml(source)}</p><ol>${entries.map(li).join("")}</ol>` +
+    `<p>${escapeHtml(footer[0])}</p><p>Full list, filters and draft messages: <a href="${escapeHtml(appUrl)}">${escapeHtml(appUrl)}</a></p><p>${escapeHtml(footer[2])}</p></div>`;
 
-  return { telegramParts: parts, subject: `PH Scout: top ${entries.length} launches (${ist(clickedAt)})`, text, html, rows: entries.length };
+  return { telegramParts: parts, subject: `Partnership Scout: your top ${entries.length} launches from the last 7 days (${ist(clickedAt)})`, text, html, rows: entries.length };
 }
 
 // ---------------------------------------------------------------- delivery (a channel counts as sent only when the provider confirms)
