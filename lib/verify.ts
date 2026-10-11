@@ -1,7 +1,7 @@
 import type { GeminiResult } from "./types";
 
-export const NO_ANGLE = "No angle available — review the launch page";
-export const COMPETITOR_ANGLE = "Not a complement — review before contacting";
+export const NO_ANGLE = "No angle available. Review the launch page";
+export const COMPETITOR_ANGLE = "Not a complement. Review before contacting";
 
 export function normalise(s: string): string {
   return s

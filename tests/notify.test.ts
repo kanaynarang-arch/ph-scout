@@ -130,7 +130,7 @@ describe("maybeNotify decides who gets a send", () => {
   it("still sends when Gemini is unavailable, with 'angle unavailable'", async () => {
     const h = harness();
     const noAi = data({ ai: { available: false, sentToGemini: 5, reusedSaved: 0, model: "m" } });
-    noAi.ranked = noAi.ranked.map((r) => ({ ...r, ai: { ...r.ai, available: false, fit: "unrated", angle: "No angle available — review the launch page", evidenceQuote: null, quoteStatus: "none" } }));
+    noAi.ranked = noAi.ranked.map((r) => ({ ...r, ai: { ...r.ai, available: false, fit: "unrated", angle: "No angle available. Review the launch page", evidenceQuote: null, quoteStatus: "none" } }));
     await maybeNotify({ generate: true, data: noAi, env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn });
     await h.settle();
     const text = String(h.f.calls[0].body.text);

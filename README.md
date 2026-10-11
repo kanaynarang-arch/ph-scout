@@ -6,13 +6,15 @@ A ranked outreach list for Kavya, who leads partnerships at a B2B SaaS company t
 
 ![Dashboard](docs/dashboard.png)
 
+![Ranked list](docs/list.png)
+
 ![Phone layout](docs/mobile.png)
 
 ![Components Map](docs/components-map.png)
 
 Components Map: [docs/components-map.png](docs/components-map.png)
 
-The UI is a dark dashboard built with original CSS and inline SVG (cards, pills, charts); nothing was copied and no images or external fonts are used.
+The UI is a dark, flat and dense dashboard (stepped charcoal surfaces, hairlines, one green accent, no glass or glow) built with original CSS and inline SVG; nothing was copied and no images are used. The ranked list is a ledger of rows, not cards. Fonts (IBM Plex Sans and Plex Mono) are downloaded when the site is built and served from the site itself, so a visit makes no request to a font host. The research behind the design is in `DESIGN_RESEARCH.md` in the project folder.
 
 ## How it works
 
@@ -45,10 +47,10 @@ Launches posted today often show 0 votes because Product Hunt hides them; those 
 
 ## Small extras on the page
 
-- **Made for Kavya's workflow:** each ranked row is a card with four stat tiles (score, upvotes, maker comments, days since launch), in the style of the "Start here" card; each row links to the founders' public Product Hunt profiles and to the product's own site (links from Product Hunt, https only; the tool never looks up emails). An expanded row also has "Find contact yourself": links that open a LinkedIn people search for each founder and a web search for the product, built in the browser from names already on screen. They look up nothing and store nothing, so Kavya finds any contact details herself; **Mark as contacted** on a row remembers it in her browser only (localStorage `ph-scout:contacted`, never sent anywhere) so she can hide what she has already handled; **Export contacted** saves those notes to a small file on her computer and **Import** reads such a file back (merged, only plain ids and dates are accepted), so clearing the browser or switching computers does not lose them. Each card's days tile also says how many days are left in the 7-day window (approximate, because Product Hunt gives launch dates by day; amber for the last two days).
+- **Made for Kavya's workflow:** each ranked row is one line of a ledger with right-aligned figures (upvotes, maker comments, days since launch with a 7-segment window bar, score with a thin bar); a Comfortable or Compact density switch (remembered in the browser) fits more rows on screen; keyboard: j and k move, Enter opens, c marks contacted, / searches, ? lists the keys (nothing fires while typing); rows slide to their new place when a filter changes; each row links to the founders' public Product Hunt profiles and to the product's own site (links from Product Hunt, https only; the tool never looks up emails). An expanded row also has "Find contact yourself": links that open a LinkedIn people search for each founder and a web search for the product, built in the browser from names already on screen. They look up nothing and store nothing, so Kavya finds any contact details herself; **Mark as contacted** on a row remembers it in her browser only (localStorage `ph-scout:contacted`, never sent anywhere) so she can hide what she has already handled; **Export contacted** saves those notes to a small file on her computer and **Import** reads such a file back (merged, only plain ids and dates are accepted), so clearing the browser or switching computers does not lose them. Each row's window cell also says how many days are left in the 7-day window (approximate, because Product Hunt gives launch dates by day; amber for the last two days).
 - **Copy as CSV / Download CSV** export exactly the rows currently visible (the first column "#" is the position in the file; "overall rank" is the rank in the full list, so it skips numbers when a filter is on) (chips and the fit switch applied, in the order shown; "More launches" rows only while that section is open). It runs in the browser from data already on the page, and cells that start with `=`, `+`, `-` or `@` are prefixed with an apostrophe so spreadsheets do not run them as formulas.
 - Rows whose fit is "Likely competitor" are dimmed, not removed, and the order never changes.
-- **Dashboard overview** above the list: four KPI tiles (launches scanned, ranked, strong-fit, contact now), a chart of where the top 10 launches get their points (upvote points and maker-comment points, from each row's score breakdown), top-score bars, a category share donut, a maker-comment coverage gauge and a "Start here" card for the rank 1 launch. Every figure is computed in the browser from the response already returned, with no extra requests, and none of it changes a score or the order.
+- **Dashboard overview** above the list: a stat strip (launches scanned, ranked, strong-fit, contact now), a chart of where the top 10 launches get their points (upvote points and maker-comment points, from each row's score breakdown), top-score bars, a category share donut, a maker-comment coverage gauge and a "Start here" card for the rank 1 launch. Every figure is computed in the browser from the response already returned, with no extra requests, and none of it changes a score or the order.
 - A coverage line above the list shows how many launches have their maker comments counted and how many rows are Provisional.
 
 ## Copy to Kavya (Telegram and email)
