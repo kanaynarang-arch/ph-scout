@@ -193,6 +193,63 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
   );
 }
 
+const CAT_COLORS = ["#3ee8c8", "#6ab0ff", "#a78bfa", "#f2c66d"];
+
+/** Donut of how the ranked launches split across the four categories (a launch can carry more than one tag). */
+function Donut({ parts }: { parts: { label: string; n: number; color: string }[] }) {
+  const total = parts.reduce((a, p) => a + p.n, 0) || 1;
+  const r = 38;
+  const c = 2 * Math.PI * r;
+  let off = 0;
+  return (
+    <div className="donut-wrap">
+      <svg viewBox="0 0 100 100" className="donut" aria-hidden="true">
+        <circle className="trk" cx="50" cy="50" r={r} />
+        {parts.map((p) => {
+          const len = (c * p.n) / total;
+          const el = <circle key={p.label} cx="50" cy="50" r={r} fill="none" stroke={p.color} strokeWidth="11" strokeDasharray={`${Math.max(0, len - 2.5)} ${c}`} strokeDashoffset={-off} transform="rotate(-90 50 50)" />;
+          off += len;
+          return el;
+        })}
+      </svg>
+      <ul className="legend">
+        {parts.map((p) => (
+          <li key={p.label}><i style={{ background: p.color }} /><span>{p.label}</span><b>{Math.round((p.n / total) * 100)}%</b></li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Pill-shaped bars: the score (out of 100) of each of the top launches, in rank order. */
+function PillBars({ rows }: { rows: ScoredLaunch[] }) {
+  return (
+    <div className="pbars" role="img" aria-label={`Scores of the top ${rows.length} launches`}>
+      {rows.map((r, i) => (
+        <div key={r.id} className="pb" title={`${r.name}: ${r.score.toFixed(1)}`}>
+          <span className="pb-n">{r.score.toFixed(0)}</span>
+          <span className="pb-track"><i style={{ height: `${Math.max(6, Math.min(100, r.score))}%` }} /></span>
+          <span className="pb-l">{String(i + 1).padStart(2, "0")}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Gauge({ pct, label }: { pct: number; label: string }) {
+  const r = 42;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="gauge">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle className="trk" cx="50" cy="50" r={r} />
+        <circle className="prg" cx="50" cy="50" r={r} strokeDasharray={`${(c * pct) / 100} ${c}`} transform="rotate(-90 50 50)" />
+      </svg>
+      <span className="g-n">{label}</span>
+    </div>
+  );
+}
+
 export default function Page() {
   const [data, setData] = useState<ScoutResponse | null>(null);
   const [loading, setLoading] = useState<"generate" | "refresh" | null>(null);
@@ -306,138 +363,213 @@ export default function Page() {
   const catCount = (id: CategoryId) => (data ? data.ranked.filter((r) => r.categories.includes(id)).length : 0);
 
   const showHero = !data && !loading;
-  const stateLine = data
-    ? [
-        <span key="r"><b>{data.ranked.length}</b> ranked</span>,
-        <span key="s"><b>{data.counted.of}</b> launches scanned</span>,
-        <span key="m">maker comments counted for <b>{data.counted.n} of {data.counted.of}</b><span className="meter" aria-hidden="true"><i style={{ width: `${data.counted.of ? Math.round((data.counted.n / data.counted.of) * 100) : 0}%` }} /></span></span>,
-        <span key="p"><b>{provisionalRows}</b> provisional</span>,
-      ]
-    : [];
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const aiOn = Boolean(data?.ai.available);
+  const strongN = data ? data.ranked.filter((r) => r.ai.fit === "strong").length : 0;
+  const hotN = data ? data.ranked.filter((r) => r.urgency === "hot").length : 0;
+  const coveragePct = data && data.counted.of ? Math.round((data.counted.n / data.counted.of) * 100) : 0;
+  const top = data?.ranked[0];
+  const catParts = CATEGORIES.map((c, i) => ({ label: c.label, n: catCount(c.id), color: CAT_COLORS[i % CAT_COLORS.length] }));
+
+  const fitSwitch = (
+    <label className="switch">
+      <input type="checkbox" checked={fitOnly} disabled={!data?.ai.available} onChange={(e) => setFitOnly(e.target.checked)} />
+      Strong and possible fit only
+    </label>
+  );
+  const statusPill = data ? (
+    <span className={`pill p-${data.source.toLowerCase()}`}>{data.source === "LIVE" && <span className="dot" aria-hidden="true" />}{data.source}<span className="when"> · {data.source === "SAMPLE" ? "bundled sample data from " : "fetched "}{fmtTime(data.fetchedAt)}</span></span>
+  ) : null;
+  const actionButtons = (
+    <>
+      <button onClick={() => run(true)} disabled={loading !== null || !data || refreshWaitMin > 0} title="Fetch the launch list again (once every 5 minutes)">
+        {loading === "refresh" ? "Refreshing…" : refreshWaitMin > 0 ? `Refresh now (in ${refreshWaitMin} min)` : "Refresh now"}
+      </button>
+      <button className="primary" onClick={() => run(false)} disabled={loading !== null}>{loading === "generate" ? "Generating…" : "Generate"}</button>
+    </>
+  );
 
   return (
     <>
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#7aeaa0" /><stop offset="1" stopColor="#30d158" /></linearGradient></defs></svg>
-      <div className="topbar">
-        <div className="topbar-in">
-          <div className="brand"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></div>
-          {!showHero && (
-            <div className="actions">
-              {data && <span className={`pill p-${data.source.toLowerCase()}`}>{data.source === "LIVE" && <span className="dot" aria-hidden="true" />}{data.source}<span className="when"> · {data.source === "SAMPLE" ? "bundled sample data from " : "fetched "}{fmtTime(data.fetchedAt)}</span></span>}
-              <button onClick={() => run(true)} disabled={loading !== null || !data || refreshWaitMin > 0} title="Fetch the launch list again (once every 5 minutes)">
-                {loading === "refresh" ? "Refreshing…" : refreshWaitMin > 0 ? `Refresh now (in ${refreshWaitMin} min)` : "Refresh now"}
-              </button>
-              <button className="primary" onClick={() => run(false)} disabled={loading !== null}>{loading === "generate" ? "Generating…" : "Generate"}</button>
-            </div>
-          )}
-        </div>
-      </div>
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#7af5dc" /><stop offset="1" stopColor="#19c7a9" /></linearGradient></defs></svg>
 
-      <main>
-        {showHero && (
-          <section className="hero">
-            <div className="hero-copy">
-            <p className="eyebrow">Partnerships · last 7 days on Product Hunt</p>
-            <h1>Find the launches worth a conversation.</h1>
-            <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
-            <div className="hero-actions">
-              <button className="primary big" onClick={() => run(false)}>Generate</button>
-              <a className="link" href="#how">How it ranks <span aria-hidden="true">›</span></a>
-            </div>
-            <p className="hint">Takes up to a minute the first time.</p>
-            </div>
-            <div className="frame" aria-hidden="true">
-              <div className="fr-bar"><i /><i /><i /></div>
-              {[0, 1, 2].map((i) => (
-                <div key={i} className={`fr-row fr-${i}`}>
-                  <span className="fr-tile" /><span className="fr-lines"><i /><i /></span>
-                  <svg viewBox="0 0 60 60"><circle className="trk" cx="30" cy="30" r="24" /><circle className="prg" cx="30" cy="30" r="24" strokeDasharray={`${[132, 104, 78][i]} 151`} transform="rotate(-90 30 30)" /></svg>
+      {showHero && (
+        <>
+          <div className="topbar"><div className="topbar-in"><div className="brand"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></div></div></div>
+          <main className="landing">
+            <section className="hero">
+              <div className="hero-copy">
+                <p className="eyebrow">Partnerships · last 7 days on Product Hunt</p>
+                <h1>Find the launches worth a conversation.</h1>
+                <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
+                <div className="hero-actions">
+                  <button className="primary big" onClick={() => run(false)}>Generate</button>
+                  <a className="link" href="#how">How it ranks <span aria-hidden="true">›</span></a>
                 </div>
-              ))}
-            </div>
-            <ol className="steps" id="how">
-              <li><span className="ico ico-blue" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
-              <li><span className="ico ico-green" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 16V9M10 16V4M16 16v-5" /></svg></span><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
-              <li><span className="ico ico-indigo" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 5h12v8H9l-3.5 3v-3H4z" /></svg></span><span className="micro">03 · Suggest</span><p>Gemini Flash writes an outreach angle backed by a quote from the launch page. It never changes the rank.</p></li>
-            </ol>
-          </section>
-        )}
+                <p className="hint">Takes up to a minute the first time.</p>
+              </div>
+              <div className="frame" aria-hidden="true">
+                <div className="fr-grid">
+                  <div className="fr-card fr-a"><span className="fr-k" /><span className="fr-big" /><svg viewBox="0 0 120 40"><path d="M0 32 C 20 8, 34 36, 56 20 S 92 4, 120 14" /></svg></div>
+                  <div className="fr-card fr-b">{[46, 72, 58, 88, 64].map((h, i) => <span key={i} className="fr-pill"><i style={{ height: `${h}%` }} /></span>)}</div>
+                  <div className="fr-card fr-c"><svg viewBox="0 0 100 100"><circle className="trk" cx="50" cy="50" r="38" /><circle className="prg" cx="50" cy="50" r="38" strokeDasharray="190 239" transform="rotate(-90 50 50)" /></svg></div>
+                  <div className="fr-card fr-d"><span className="fr-k" /><span className="fr-btn" /></div>
+                </div>
+              </div>
+              <ol className="steps" id="how">
+                <li><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
+                <li><span className="ico ico-blue" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 16V9M10 16V4M16 16v-5" /></svg></span><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
+                <li><span className="ico ico-violet" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 5h12v8H9l-3.5 3v-3H4z" /></svg></span><span className="micro">03 · Suggest</span><p>Gemini Flash writes an outreach angle backed by a quote from the launch page. It never changes the rank.</p></li>
+              </ol>
+            </section>
+            {error && <div className="banner err">{error}</div>}
+            <footer className="foot">
+              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
+              <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
+            </footer>
+          </main>
+        </>
+      )}
 
-        {error && <div className="banner err">{error}</div>}
-        {loading && (
-          <>
-            <div className="banner info" role="status">Scanning Product Hunt and writing outreach angles. The first run can take up to a minute.</div>
-            <div className="table" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="skel" />)}</div>
-          </>
-        )}
-        {data?.warnings.map((w, i) => <div key={i} className={`banner ${w.startsWith("AI summaries unavailable") || w.startsWith("Live Product Hunt") ? "err" : ""}`}>{w}</div>)}
-
-        {data && (
-          <>
-            <div className="summary" role="status">
-              {stateLine.map((n, i) => <span key={i} className="sum-item">{n}</span>)}
-              {notice && <span className="sum-item note">{notice}</span>}
-            </div>
-            {(provisionalRows > 0 || data.counted.stale > 0) && (
-              <p className="hint cov">
-                {provisionalRows > 0 && <>{provisionalRows} {provisionalRows === 1 ? "row is" : "rows are"} <b>Provisional</b>: {provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted. </>}
-                {data.counted.stale > 0 && <>{data.counted.stale} {data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).</>}
-              </p>
-            )}
-
-            <div className="toolbar">
-              <div className="seg" role="group" aria-label="Categories">
-                <button className={`chip ${cat === "all" ? "on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All <span className="n">{data.ranked.length}</span></button>
+      {!showHero && (
+        <div className="shell">
+          <aside className="side">
+            <div className="brand"><span className="mark" aria-hidden="true" />Partnership Scout</div>
+            {data && (
+              <nav aria-label="Sections and filters">
+                <p className="micro nav-h">Overview</p>
+                <a className="nav on" href="#overview">Dashboard</a>
+                <a className="nav" href="#list">Ranked list <span className="n">{data.ranked.length}</span></a>
+                {data.tooEarly.length > 0 && <a className="nav" href="#early">Too early <span className="n">{data.tooEarly.length}</span></a>}
+                {data.moreLaunches.length > 0 && <a className="nav" href="#more" onClick={() => setMoreOpen(true)}>More launches <span className="n">{data.moreLaunches.length}</span></a>}
+                <p className="micro nav-h">Categories</p>
+                <button className={`nav${cat === "all" ? " on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All categories <span className="n">{data.ranked.length}</span></button>
                 {CATEGORIES.map((c) => (
-                  <button key={c.id} className={`chip ${cat === c.id ? "on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
+                  <button key={c.id} className={`nav${cat === c.id ? " on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
                 ))}
-              </div>
-              <label className="switch">
-                <input type="checkbox" checked={fitOnly} disabled={!data.ai.available} onChange={(e) => setFitOnly(e.target.checked)} />
-                Strong and possible fit only
-              </label>
-            </div>
+                <p className="micro nav-h">View</p>
+                <div className="side-switch">{fitSwitch}</div>
+              </nav>
+            )}
+            {data && <div className="side-foot">{statusPill}{notice && <p className="notice" role="status">{notice}</p>}</div>}
+          </aside>
 
-            <div className="listhead">
-              <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
-              <div className="right">
-                <span className="micro">Sorted by score</span>
-                <button className="small" onClick={copyCsv} disabled={exportCount === 0}>Copy as CSV</button>
-                <button className="small" onClick={downloadCsv} disabled={exportCount === 0}>Download CSV</button>
+          <div className="content">
+            <header className="dash-head">
+              <div className="dh-text">
+                <div className="brand m-brand"><span className="mark" aria-hidden="true" />Partnership Scout</div>
+                <h1>{greet}, Kavya</h1>
+                <p className="sub2">Here is this week&apos;s outreach shortlist.</p>
               </div>
-            </div>
-            <p className="hint" style={{ margin: "0 0 12px" }}>In order of score. Filters only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
-            {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
-            {ranked.length > 0 && (
-              <div className="table">
-                <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Signals</span><span>Score</span><span /></div>
-                {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} />)}
-              </div>
+              <div className="actions">{actionButtons}</div>
+            </header>
+
+            {error && <div className="banner err">{error}</div>}
+            {loading && (
+              <>
+                <div className="banner info" role="status">Scanning Product Hunt and writing outreach angles. The first run can take up to a minute.</div>
+                <div className="panel" aria-hidden="true"><div className="table">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="skel" />)}</div></div>
+              </>
+            )}
+            {data?.warnings.map((w, i) => <div key={i} className={`banner ${w.startsWith("AI summaries unavailable") || w.startsWith("Live Product Hunt") ? "err" : ""}`}>{w}</div>)}
+
+            {data && (
+              <>
+                <section className="kpis" id="overview" aria-label="Summary">
+                  <div className="kpi"><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><div><div className="kn">{data.counted.of}</div><div className="kl">Launches scanned</div></div></div>
+                  <div className="kpi"><span className="ico ico-blue" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h12M4 14h8" /></svg></span><div><div className="kn">{data.ranked.length}</div><div className="kl">Ranked launches</div></div></div>
+                  <div className="kpi"><span className="ico ico-green" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m4 10.5 4 4 8-9" /></svg></span><div><div className="kn">{aiOn ? strongN : "–"}</div><div className="kl">Strong-fit launches</div></div></div>
+                  <div className="kpi"><span className="ico ico-violet" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1 1 1.500 1.500 1.500C10.500 7 10 5 10 3z" /></svg></span><div><div className="kn">{hotN}</div><div className="kl">Contact now</div></div></div>
+                </section>
+
+                <section className="bento" aria-label="Insights">
+                  <div className="card c-scores">
+                    <div className="card-h"><h3>Top scores</h3><span className="micro">Top {Math.min(8, data.ranked.length)} by score</span></div>
+                    <PillBars rows={data.ranked.slice(0, 8)} />
+                  </div>
+                  <div className="card c-cov">
+                    <div className="card-h"><h3>Maker-comment coverage</h3></div>
+                    <div className="cov-row">
+                      <Gauge pct={coveragePct} label={`${coveragePct}%`} />
+                      <div className="cov-text">
+                        <b>{data.counted.n} of {data.counted.of}</b> launches counted
+                        <p className="hint">{provisionalRows > 0 ? `${provisionalRows} ${provisionalRows === 1 ? "row is" : "rows are"} Provisional: ${provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted.` : "No row is Provisional."}{data.counted.stale > 0 ? ` ${data.counted.stale} ${data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).` : ""}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="card c-cats">
+                    <div className="card-h"><h3>By category</h3><span className="micro">Share of tags</span></div>
+                    <Donut parts={catParts} />
+                  </div>
+                  {top && (
+                    <div className="card c-top">
+                      <span className="micro">Start here</span>
+                      <h3>{top.name} <span className="top-score">{top.score.toFixed(1)}</span></h3>
+                      {aiOn && top.ai.angle && <p>{top.ai.angle}</p>}
+                      <div className="top-actions">
+                        <a className="btn-a" href={top.url} target="_blank" rel="noreferrer">Open launch ↗</a>
+                        {aiOn && top.ai.angle && <button className="ghost-dark" onClick={async () => flash((await copyText(top.ai.angle)) ? "Angle copied" : "Copy failed: select the text")}>Copy angle</button>}
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <div className="m-filters">
+                  <div className="seg" role="group" aria-label="Categories">
+                    <button className={`chip ${cat === "all" ? "on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All <span className="n">{data.ranked.length}</span></button>
+                    {CATEGORIES.map((c) => (
+                      <button key={c.id} className={`chip ${cat === c.id ? "on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
+                    ))}
+                  </div>
+                  {fitSwitch}
+                  {notice && <p className="notice" role="status">{notice}</p>}
+                </div>
+
+                <section className="panel" id="list">
+                  <div className="listhead">
+                    <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
+                    <div className="right">
+                      <span className="micro">Sorted by score</span>
+                      <button className="small" onClick={copyCsv} disabled={exportCount === 0}>Copy as CSV</button>
+                      <button className="small" onClick={downloadCsv} disabled={exportCount === 0}>Download CSV</button>
+                    </div>
+                  </div>
+                  <p className="hint">In order of score. Filters only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
+                  {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
+                  {ranked.length > 0 && (
+                    <div className="table">
+                      <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Signals</span><span>Score</span><span /></div>
+                      {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} />)}
+                    </div>
+                  )}
+                </section>
+
+                {data.tooEarly.length > 0 && (
+                  <section className="panel" id="early">
+                    <div className="listhead"><h2>Too early to rank <span className="count">{tooEarly.length}</span></h2></div>
+                    <p className="hint">Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
+                    <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} />)}</div>
+                  </section>
+                )}
+
+                {data.moreLaunches.length > 0 && (
+                  <details className="panel more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+                    <summary>More launches ({more.length}), in score order, without an angle</summary>
+                    <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} />)}</div>
+                  </details>
+                )}
+              </>
             )}
 
-            {data.tooEarly.length > 0 && (
-              <section className="group">
-                <h2>Too early to rank <span className="count">{tooEarly.length}</span></h2>
-                <p className="hint" style={{ margin: "0 0 12px" }}>Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
-                <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} />)}</div>
-              </section>
-            )}
-
-            {data.moreLaunches.length > 0 && (
-              <details className="group more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
-                <summary>More launches ({more.length}), in score order, without an angle</summary>
-                <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} />)}</div>
-              </details>
-            )}
-          </>
-        )}
-
-        <footer className="foot">
-          <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
-          <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
-        </footer>
-        <div role="status" aria-live="polite">{toast && <div className="toast">{toast}</div>}</div>
-      </main>
+            <footer className="foot">
+              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
+              <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
+            </footer>
+          </div>
+        </div>
+      )}
+      <div role="status" aria-live="polite">{toast && <div className="toast">{toast}</div>}</div>
     </>
   );
 }
