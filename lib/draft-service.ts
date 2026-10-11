@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { PROFILE } from "../config/profile";
 import { getOrRefresh, key, readMany } from "./cache";
 import { TTL_GEMINI_MS } from "./config";
-import { callDraft, DRAFT_VERSION, sanitizeDraft, type Draft, type DraftSource } from "./draft";
+import { callDraft, DRAFT_VERSION, sanitizeDraft, type Draft, type DraftChannel, type DraftSource } from "./draft";
 import { geminiConfigured } from "./gemini";
 import { geminiKey, isLaunchArray } from "./pipeline";
 import { loadSnapshot } from "./snapshot";
@@ -35,17 +35,17 @@ export async function lookupSource(id: string): Promise<DraftSource | null> {
 }
 
 /** One Gemini Flash call per launch, saved in Neon for 7 days so repeat clicks cost nothing. */
-export async function draftFor(src: DraftSource): Promise<Draft> {
+export async function draftFor(src: DraftSource, channel: DraftChannel = "email"): Promise<Draft> {
   if (!geminiConfigured()) throw new Error("Gemini is not configured");
   const l = src.launch;
-  const k = key("draft", DRAFT_VERSION, sha(PROFILE), l.id, sha(`${l.name}\n${l.tagline}\n${l.description}\n${src.angle}`));
+  const k = key("draft", DRAFT_VERSION, channel, sha(PROFILE), l.id, sha(`${l.name}\n${l.tagline}\n${l.description}\n${src.angle}`));
   const r = await getOrRefresh<Draft>({
     key: k,
     ttlMs: TTL_GEMINI_MS,
     validate: isDraft,
     lockName: `draft:${l.id}`,
     fetcher: async () => {
-      const d = sanitizeDraft(await callDraft(src, AbortSignal.timeout(25_000)));
+      const d = sanitizeDraft(await callDraft(src, AbortSignal.timeout(25_000), channel), channel);
       if (!d) throw new Error("Unusable draft");
       return d;
     },

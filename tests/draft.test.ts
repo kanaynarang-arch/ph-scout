@@ -95,3 +95,26 @@ describe("handleDraft", () => {
     expect(String(out.body.error)).toMatch(/unavailable/i);
   });
 });
+
+describe("short direct message (dm) channel", () => {
+  const DM = `Hi ${FIRST_NAME},\n\nVelozity pulling chat, calls and tasks into one place caught my eye. We run async standups for remote teams, so I think our products could sit well together. Open to a quick chat next week?\n\nKavya`;
+  it("needs no subject and allows a shorter message", () => {
+    const d = sanitizeDraft({ subject: "DM", body: DM }, "dm");
+    expect(d?.subject).toBe("");
+    expect(d?.body.startsWith(`Hi ${FIRST_NAME},`)).toBe(true);
+    expect(sanitizeDraft({ subject: "DM", body: DM }, "email")).toBeNull(); // an email still needs a real subject
+    expect(sanitizeDraft({ subject: "Async standups for Velozity", body: DM }, "email")).not.toBeNull();
+  });
+  it("applies the same safety rules: no links or email addresses, sign-off enforced", () => {
+    expect(sanitizeDraft({ subject: "DM", body: DM + " https://x.example" }, "dm")).toBeNull();
+    expect(sanitizeDraft({ subject: "DM", body: DM.replace("\n\nKavya", "") }, "dm")?.body.trim().endsWith("Kavya")).toBe(true);
+  });
+  it("the handler passes the channel through, and anything except dm means email", async () => {
+    const seen: string[] = [];
+    const d = { lookup: async () => src, draftFor: async (_s: DraftSource, c: string) => { seen.push(c); return { subject: "s", body: DM }; } } as unknown as DraftDeps;
+    await handleDraft(req({ id: "42", channel: "dm" }), d);
+    await handleDraft(req({ id: "42", channel: "carrier-pigeon" }), d);
+    await handleDraft(req({ id: "42" }), d);
+    expect(seen).toEqual(["dm", "email", "email"]);
+  });
+});

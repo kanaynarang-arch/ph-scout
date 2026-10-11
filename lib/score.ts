@@ -143,5 +143,23 @@ export function founderInfo(l: Pick<Launch, "makers" | "hunter">) {
   const hiddenCount = l.makers.length - visible.length;
   const names = visible.map((m) => m.name);
   const hunter = names.length === 0 && l.hunter && !/redacted/i.test(l.hunter.name) ? l.hunter.name : null;
-  return { names, hiddenCount, hunter };
+  // A public Product Hunt profile link, only when the username is visible and looks like a normal handle. Never an email.
+  const people = visible.map((m) => ({ name: m.name, url: profileUrl(m.username) }));
+  return { names, hiddenCount, hunter, people };
+}
+
+export function profileUrl(username: string | null | undefined): string | null {
+  if (!username || /redacted/i.test(username) || !/^[A-Za-z0-9_.-]{1,60}$/.test(username)) return null;
+  return `https://www.producthunt.com/@${username}`;
+}
+
+/** Only an https link is shown, so a bad value can never become a javascript: or data: link. */
+export function safeSiteUrl(u: string | null | undefined): string | null {
+  if (!u) return null;
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }

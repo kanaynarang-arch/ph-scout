@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { PROFILE } from "../config/profile";
 import { scannedCategories, type Category, type ExtraCategoryId } from "./categories";
-import { categoriesOf, daysSinceLaunch, founderInfo, scoreAll, selectToCount, sortByScore, sortTooEarly, urgencyFor, votesHidden } from "./score";
+import { categoriesOf, daysSinceLaunch, founderInfo, safeSiteUrl, scoreAll, selectToCount, sortByScore, sortTooEarly, urgencyFor, votesHidden } from "./score";
 import {
   GEMINI_HIDDEN_EXTRA,
   GEMINI_TOP_N,
@@ -101,6 +101,7 @@ function buildRow(
     urgency: urgencyFor(days),
     categories: categoriesOf(l, scanned),
     founders: founderInfo(l),
+    websiteUrl: safeSiteUrl(l.website),
     score: scored?.score ?? 0,
     provisional: scored?.provisional ?? false,
     parts:

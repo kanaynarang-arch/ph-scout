@@ -21,6 +21,7 @@ export interface Launch {
   viaSlugs: string[]; // topic slugs this launch was found under
   makers: Maker[];
   hunter: { name: string; username: string } | null;
+  website?: string | null; // the product's site link from Product Hunt (older saved lists do not have it)
 }
 
 export type Fit = "strong" | "possible" | "weak" | "competitor";
@@ -62,7 +63,8 @@ export interface ScoredLaunch {
   daysSinceLaunch: number;
   urgency: Urgency;
   categories: CategoryId[];
-  founders: { names: string[]; hiddenCount: number; hunter: string | null };
+  founders: { names: string[]; hiddenCount: number; hunter: string | null; people?: { name: string; url: string | null }[] }; // url = public Product Hunt profile when the username is visible
+  websiteUrl?: string | null; // link to the product's own site (https only)
   score: number; // display, one decimal
   provisional: boolean;
   parts: ScoreParts;

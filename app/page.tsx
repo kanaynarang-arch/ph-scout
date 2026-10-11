@@ -81,9 +81,29 @@ function Ring({ value, provisional, animate }: { value: number; provisional: boo
   );
 }
 
+/** Search by product name, one-liner or visible founder names (case-insensitive). Only hides rows. */
+function matchesQuery(r: ScoredLaunch, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [r.name, r.ai.oneLiner, r.tagline, ...r.founders.names].some((t) => t.toLowerCase().includes(q));
+}
+
 function Founder({ r }: { r: ScoredLaunch }) {
-  const { names, hiddenCount, hunter } = r.founders;
-  if (names.length) return <>{names.join(", ")}{hiddenCount > 0 ? ` (+${hiddenCount} hidden)` : ""}</>;
+  const { names, hiddenCount, hunter, people } = r.founders;
+  if (names.length) {
+    const list = people && people.length === names.length ? people : names.map((name) => ({ name, url: null as string | null }));
+    return (
+      <>
+        {list.map((p, i) => (
+          <span key={`${p.name}-${i}`}>
+            {i > 0 && ", "}
+            {p.url ? <a className="plink" href={p.url} target="_blank" rel="noreferrer" title="Their public Product Hunt profile">{p.name}</a> : p.name}
+          </span>
+        ))}
+        {hiddenCount > 0 ? ` (+${hiddenCount} hidden)` : ""}
+      </>
+    );
+  }
   if (hunter) return <>{hunter} <span className="meta">(Posted by (hunter, may not be the founder))</span></>;
   return <>Not available — <a href={r.url} target="_blank" rel="noreferrer">see the launch page</a></>;
 }
@@ -111,25 +131,25 @@ function HowScored({ r }: { r: ScoredLaunch }) {
   );
 }
 
-function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; rank?: number; showNew: boolean; aiShown: boolean; index?: number; onCopied: (msg: string) => void }) {
+function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacted }: { r: ScoredLaunch; rank?: number; showNew: boolean; aiShown: boolean; index?: number; onCopied: (msg: string) => void; contacted: boolean; onContacted: () => void }) {
   const [open, setOpen] = useState(false);
   const copy = async () => {
     const ok = await copyText(r.ai.angle);
     onCopied(ok ? "Angle copied" : "Copy failed: select the text");
   };
   // Draft message: a Gemini-written first message for Kavya to edit and send herself. The page fills in the founder's first name.
-  const [dr, setDr] = useState<{ subject: string; body: string } | null>(null);
+  const [dr, setDr] = useState<{ subject: string; body: string; channel: "email" | "dm" } | null>(null);
   const [drState, setDrState] = useState<"idle" | "loading" | "error">("idle");
   const [drErr, setDrErr] = useState("");
   const firstName = (r.founders.names[0] ?? "").split(/\s+/)[0] || "there";
-  const makeDraft = async () => {
+  const makeDraft = async (channel: "email" | "dm") => {
     setDrState("loading");
     setDrErr("");
     try {
-      const res = await fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) });
+      const res = await fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, channel }) });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Drafting failed");
-      setDr({ subject: String(j.subject), body: String(j.body).split("{{first_name}}").join(firstName) });
+      setDr({ subject: String(j.subject ?? ""), body: String(j.body).split("{{first_name}}").join(firstName), channel });
       setDrState("idle");
     } catch (e) {
       setDrErr(e instanceof Error ? e.message : "Drafting failed");
@@ -138,13 +158,14 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
   };
   const copyDraft = async () => {
     if (!dr) return;
-    onCopied((await copyText(`Subject: ${dr.subject}\n\n${dr.body}`)) ? "Message copied" : "Copy failed: select the text");
+    onCopied((await copyText(dr.channel === "email" ? `Subject: ${dr.subject}\n\n${dr.body}` : dr.body)) ? "Message copied" : "Copy failed: select the text");
   };
   const competitor = aiShown && r.ai.fit === "competitor";
   const cls = ["lrow"];
   if (rank !== undefined && rank <= 3) cls.push(`top top${rank}`);
   if (competitor) cls.push("competitor");
   if (open) cls.push("open");
+  if (contacted) cls.push("done");
   if (index !== undefined && index < 10) cls.push("enter");
   const unverified = aiShown && r.ai.quoteStatus === "unverified" && r.ai.evidenceQuote;
   const detailId = `d-${r.id}`;
@@ -159,6 +180,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
           {showNew && <span className="pill p-new">New since your last visit</span>}
           {aiShown && <span className={`pill p-${r.ai.fit}`}>{FIT_TEXT[r.ai.fit]}</span>}
           {r.provisional && <span className="pill p-provisional">Provisional</span>}
+          {contacted && <span className="pill p-contacted">Contacted</span>}
           {r.votesHidden && <span className="pill">Votes hidden</span>}
         </div>
         <div className="founder">Founder: <Founder r={r} /></div>
@@ -199,18 +221,21 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
                 )}
                 <div className="d-actions">
                   <button className="small" onClick={copy}>Copy angle</button>
-                  {r.ai.angle && <button className="small accent" onClick={makeDraft} disabled={drState === "loading"}>{drState === "loading" ? "Drafting…" : dr ? "Reset draft" : "Draft message"}</button>}
-                  <span className="note">The angle is a starting point for you, not a message.</span>
+                  {r.ai.angle && <button className="small accent" onClick={() => makeDraft("email")} disabled={drState === "loading"}>{drState === "loading" ? "Drafting…" : dr?.channel === "email" ? "Reset email draft" : "Draft email"}</button>}
+                  {r.ai.angle && <button className="small accent" onClick={() => makeDraft("dm")} disabled={drState === "loading"}>{dr?.channel === "dm" ? "Reset short DM" : "Draft short DM"}</button>}
+                  {r.websiteUrl && <a className="btn-link" href={r.websiteUrl} target="_blank" rel="noreferrer">Product site ↗</a>}
+                  <button className={`small${contacted ? " on-contacted" : ""}`} onClick={onContacted} aria-pressed={contacted}>{contacted ? "✓ Contacted (undo)" : "Mark as contacted"}</button>
+                  <span className="note">The angle is a starting point for you, not a message. "Contacted" is only a note kept in this browser: the tool never contacts anyone.</span>
                 </div>
                 {drState === "error" && <p className="draft-err" role="alert">{drErr}</p>}
                 {dr && (
                   <div className="draft">
-                    <div className="micro">Draft message · for you to review and send yourself</div>
-                    <label className="d-lbl">Subject<input value={dr.subject} onChange={(e) => setDr({ ...dr, subject: e.target.value })} /></label>
-                    <label className="d-lbl">Message<textarea rows={12} value={dr.body} onChange={(e) => setDr({ ...dr, body: e.target.value })} /></label>
+                    <div className="micro">{dr.channel === "email" ? "Draft email" : "Draft short DM"} · for you to review and send yourself</div>
+                    {dr.channel === "email" && <label className="d-lbl">Subject<input value={dr.subject} onChange={(e) => setDr({ ...dr, subject: e.target.value })} /></label>}
+                    <label className="d-lbl">Message<textarea rows={dr.channel === "dm" ? 7 : 12} value={dr.body} onChange={(e) => setDr({ ...dr, body: e.target.value })} /></label>
                     <div className="d-actions">
                       <button className="small primary" onClick={copyDraft}>Copy message</button>
-                      <span className="note">AI draft. Check every claim, edit it, then send it from your own email or LinkedIn. This tool never sends it.</span>
+                      <span className="note">AI draft. Check every claim, edit it, then send it yourself from your own email, LinkedIn or Product Hunt. This tool never sends it.</span>
                     </div>
                   </div>
                 )}
@@ -230,6 +255,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
 
 const CAT_COLORS = ["#3ee8c8", "#ffb02e", "#a78bfa", "#d4f55a", "#f4a9d0", "#d6b36a"];
 const EXTRAS_KEY = "ph-scout:extras";
+const CONTACTED_KEY = "ph-scout:contacted";
 
 /** Donut of how the ranked launches split across the four categories (a launch can carry more than one tag). */
 function Donut({ parts }: { parts: { label: string; n: number; color: string }[] }) {
@@ -355,6 +381,25 @@ export default function Page() {
   const allCats = cats.length === 0;
   const [extras, setExtras] = useState<ExtraCategoryId[]>([]); // optional categories to scan on the next Generate (off by default)
   const [extraNote, setExtraNote] = useState<string | null>(null);
+  const [contacted, setContacted] = useState<Record<string, string>>({}); // launch id -> when Kavya marked it (kept only in this browser)
+  const [hideContacted, setHideContacted] = useState(false);
+  const [query, setQuery] = useState("");
+  const [recency, setRecency] = useState<"any" | "hot" | "week" | "closing">("any"); // filter by how recently a launch happened (only hides rows)
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(CONTACTED_KEY) ?? "{}");
+      if (v && typeof v === "object" && !Array.isArray(v)) setContacted(Object.fromEntries(Object.entries(v).filter(([k, t]) => typeof k === "string" && typeof t === "string")) as Record<string, string>);
+    } catch { /* storage blocked or bad value */ }
+  }, []);
+  const toggleContacted = (id: string) =>
+    setContacted((cur) => {
+      const next = { ...cur };
+      if (next[id]) delete next[id];
+      else next[id] = new Date().toISOString();
+      try { localStorage.setItem(CONTACTED_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+      return next;
+    });
   useEffect(() => {
     try { setExtras(parseExtras(JSON.parse(localStorage.getItem(EXTRAS_KEY) ?? "[]"))); } catch { /* storage blocked or bad value */ }
   }, []);
@@ -431,7 +476,14 @@ export default function Page() {
   }, [data, tick]);
 
   const visible = (rows: ScoredLaunch[]) =>
-    rows.filter((r) => (allCats || r.categories.some((c) => cats.includes(c))) && (!fitOnly || r.ai.fit === "strong" || r.ai.fit === "possible"));
+    rows.filter(
+      (r) =>
+        (allCats || r.categories.some((c) => cats.includes(c))) &&
+        (!fitOnly || r.ai.fit === "strong" || r.ai.fit === "possible") &&
+        (recency === "any" || r.urgency === recency) &&
+        (!hideContacted || !contacted[r.id]) &&
+        matchesQuery(r, query),
+    );
   const isNew = (r: ScoredLaunch) =>
     Boolean(data && data.source === "LIVE" && data.newTagging && prevVisit && r.firstSeenAt && Date.parse(r.firstSeenAt) > Date.parse(prevVisit));
 
@@ -506,6 +558,24 @@ export default function Page() {
       <input type="checkbox" checked={fitOnly} disabled={!data?.ai.available} onChange={(e) => setFitOnly(e.target.checked)} />
       Strong and possible fit only
     </label>
+  );
+  const contactedCount = data ? [...data.ranked, ...data.tooEarly, ...data.moreLaunches].filter((r) => contacted[r.id]).length : 0;
+  const contactedSwitch = (
+    <label className="switch">
+      <input type="checkbox" checked={hideContacted} disabled={contactedCount === 0 && !hideContacted} onChange={(e) => setHideContacted(e.target.checked)} />
+      Hide contacted{contactedCount ? ` (${contactedCount})` : ""}
+    </label>
+  );
+  const activeFilters = cats.length + (fitOnly ? 1 : 0) + (hideContacted ? 1 : 0) + (recency !== "any" ? 1 : 0) + (query.trim() ? 1 : 0);
+  const recencyPicker = (
+    <div className="recency" role="group" aria-label="Launched">
+      <p className="micro nav-h">Launched</p>
+      <div className="seg seg-wrap">
+        {([["any", "Any time"], ["hot", "Last 2 days"], ["week", "3–5 days"], ["closing", "6–7 days"]] as const).map(([id, label]) => (
+          <button key={id} className={`chip ${recency === id ? "on" : ""}`} aria-pressed={recency === id} onClick={() => setRecency(id)}>{label}</button>
+        ))}
+      </div>
+    </div>
   );
   const extraPicker = (
     <div className="extras" role="group" aria-label="Optional categories to scan">
@@ -585,8 +655,9 @@ export default function Page() {
             {data && (
               <nav aria-label="Sections and filters">
                 <p className="micro nav-h">Overview</p>
-                <a className="nav on" href="#overview">Dashboard</a>
+                <a className="nav on" href="#overview">Overview</a>
                 <a className="nav" href="#list">Ranked list <span className="n">{data.ranked.length}</span></a>
+                <a className="nav" href="#insights" onClick={() => setInsightsOpen(true)}>Insights</a>
                 {data.tooEarly.length > 0 && <a className="nav" href="#early">Too early <span className="n">{data.tooEarly.length}</span></a>}
                 {data.moreLaunches.length > 0 && <a className="nav" href="#more" onClick={() => setMoreOpen(true)}>More launches <span className="n">{data.moreLaunches.length}</span></a>}
                 <p className="micro nav-h">Categories</p>
@@ -596,6 +667,8 @@ export default function Page() {
                 ))}
                 <p className="micro nav-h">View</p>
                 <div className="side-switch">{fitSwitch}</div>
+                <div className="side-switch">{contactedSwitch}</div>
+                {recencyPicker}
                 {extraPicker}
               </nav>
             )}
@@ -634,7 +707,58 @@ export default function Page() {
                   <div className="kpi k-purple"><span className="ico ico-purple" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1 1 1.500 1.500 1.500C10.500 7 10 5 10 3z" /></svg></span><div className="kn">{hotRows.length}</div><div className="kl">Contact now</div></div>
                 </section>
 
-                <section className="bento" aria-label="Insights">
+                <details className="m-filters mfilters">
+                  <summary>Filters{activeFilters ? ` (${activeFilters} on)` : ""}</summary>
+                  <div className="mf-body">
+                  <div className="seg" role="group" aria-label="Categories, pick one or more">
+                    <button className={`chip ${allCats ? "on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All <span className="n">{data.ranked.length}</span></button>
+                    {availableCats.map((c) => (
+                      <button key={c.id} className={`chip ${cats.includes(c.id) ? "on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
+                    ))}
+                  </div>
+                  {fitSwitch}
+                  {contactedSwitch}
+                  {recencyPicker}
+                  <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
+                  {notice && <p className="notice" role="status">{notice}</p>}
+                  </div>
+                </details>
+
+                <section className="panel flat" id="list">
+                  <div className="listhead">
+                    <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
+                    <div className="right">
+                      <input type="search" className="search" placeholder="Search product or founder" aria-label="Search the list by product or founder" value={query} onChange={(e) => setQuery(e.target.value)} />
+                      <span className="micro">Sorted by score</span>
+                    </div>
+                  </div>
+                  <p className="hint">In order of score. Filters and search only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
+                  {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
+                  {ranked.length > 0 && (
+                    <div className="table">
+                      <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Score</span><span /></div>
+                      {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}
+                    </div>
+                  )}
+                </section>
+
+                {data.tooEarly.length > 0 && (
+                  <section className="panel flat" id="early">
+                    <div className="listhead"><h2>Too early to rank <span className="count">{tooEarly.length}</span></h2></div>
+                    <p className="hint">Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
+                    <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
+                  </section>
+                )}
+
+                {data.moreLaunches.length > 0 && (
+                  <details className="panel flat more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+                    <summary>More launches ({more.length}), in score order, without an angle</summary>
+                    <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
+                  </details>
+                )}
+                <details className="panel flat insights" id="insights" open={insightsOpen} onToggle={(e) => setInsightsOpen(e.currentTarget.open)}>
+                  <summary>Insights: where the points come from, who to contact first, category mix</summary>
+                  <section className="bento" aria-label="Insights">
                   <div className="card flat c-chart">
                     <div className="card-h"><h3>Where the points come from</h3><span className="micro">Top {Math.min(10, data.ranked.length)} launches</span></div>
                     <AreaChart rows={data.ranked.slice(0, 10)} />
@@ -682,48 +806,7 @@ export default function Page() {
                     </div>
                   )}
                 </section>
-
-                <div className="m-filters">
-                  <div className="seg" role="group" aria-label="Categories, pick one or more">
-                    <button className={`chip ${allCats ? "on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All <span className="n">{data.ranked.length}</span></button>
-                    {availableCats.map((c) => (
-                      <button key={c.id} className={`chip ${cats.includes(c.id) ? "on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
-                    ))}
-                  </div>
-                  {fitSwitch}
-                  <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
-                  {notice && <p className="notice" role="status">{notice}</p>}
-                </div>
-
-                <section className="panel flat" id="list">
-                  <div className="listhead">
-                    <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
-                    <span className="micro">Sorted by score</span>
-                  </div>
-                  <p className="hint">In order of score. Filters only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
-                  {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
-                  {ranked.length > 0 && (
-                    <div className="table">
-                      <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Score</span><span /></div>
-                      {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} />)}
-                    </div>
-                  )}
-                </section>
-
-                {data.tooEarly.length > 0 && (
-                  <section className="panel flat" id="early">
-                    <div className="listhead"><h2>Too early to rank <span className="count">{tooEarly.length}</span></h2></div>
-                    <p className="hint">Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
-                    <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} />)}</div>
-                  </section>
-                )}
-
-                {data.moreLaunches.length > 0 && (
-                  <details className="panel flat more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
-                    <summary>More launches ({more.length}), in score order, without an angle</summary>
-                    <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} />)}</div>
-                  </details>
-                )}
+                </details>
               </>
             )}
 

@@ -67,7 +67,7 @@ query($after: String, $since: DateTime!, $topic: String) {
   posts(first: ${PAGE_SIZE}, after: $after, topic: $topic, postedAfter: $since, order: VOTES) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name tagline description slug url votesCount commentsCount
+      id name tagline description slug url website votesCount commentsCount
       createdAt featuredAt
       user { name username }
       topics(first: 5) { nodes { slug name } }
@@ -83,6 +83,7 @@ interface RawPost {
   description: string | null;
   slug: string;
   url: string;
+  website?: string | null;
   votesCount: number;
   commentsCount: number;
   createdAt: string;
@@ -109,6 +110,7 @@ function toLaunch(p: RawPost, slug: string): Launch {
     commentsCount: p.commentsCount ?? 0,
     createdAt: p.createdAt,
     featuredAt: p.featuredAt ?? null,
+    website: p.website ?? null,
     topics: p.topics?.nodes ?? [],
     viaSlugs: [slug],
     makers: (p.makers ?? []).map((m) => ({ id: String(m.id), name: m.name, username: m.username })),
