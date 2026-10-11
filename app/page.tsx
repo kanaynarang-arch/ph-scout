@@ -614,7 +614,7 @@ export default function Page() {
 
       {showHero && (
         <>
-          <div className="topbar"><div className="topbar-in"><a className="brand" href="/" onClick={goHome} aria-label="ProductHunt Partnership Scout, go to the homepage"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></a></div></div>
+          <div className="topbar" role="banner"><div className="topbar-in"><a className="brand" href="/" onClick={goHome} aria-label="ProductHunt Partnership Scout, go to the homepage"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></a></div></div>
           <main className="landing">
             <section className="hero">
               <div className="hero-copy">
@@ -680,12 +680,12 @@ export default function Page() {
             {data && <div className="side-foot">{statusPill}{notice && <p className="notice" role="status">{notice}</p>}</div>}
           </aside>
 
-          <div className="content">
-            <header className="dash-head">
+          <div className="content" role="main">
+            <div className="dash-head">
               <a className="brand m-brand" href="/" onClick={goHome} aria-label="Partnership Scout, go to the homepage"><span className="mark" aria-hidden="true" />Partnership Scout</a>
               <h1><span className="g">{greet}</span> <b>Kavya</b></h1>
               <p className="sub2">Here is this week&apos;s outreach shortlist.</p>
-            </header>
+            </div>
 
             <section className="qas" aria-label="Actions">
               <button className="qa qa-main" onClick={() => run(false)} disabled={busy}><span>{loading === "generate" ? "Generating…" : "Generate"}<small>{extras.length ? `Four main + ${extras.length} optional` : "Build a fresh list"}</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M10 3l1.8 4.2L16 9l-4.2 1.8L10 15l-1.8-4.2L4 9l4.2-1.8z" /></svg></i></button>
@@ -713,6 +713,7 @@ export default function Page() {
                 </section>
 
                   <section className="bento" id="insights" aria-label="Insights">
+                  <h2 className="sr-only">Insights</h2>
                   <div className="card flat c-chart">
                     <div className="card-h"><h3>Where the points come from</h3><span className="micro">Top {Math.min(10, data.ranked.length)} launches</span></div>
                     <AreaChart rows={data.ranked.slice(0, 10)} />

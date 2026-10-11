@@ -92,3 +92,4 @@ Kavya's company profile (what Gemini may say about her product) is in `config/pr
 - Live data comes from the Product Hunt API, which is meant for **non-commercial** use by default. This is an exam demo and is not presented as a commercial product.
 - Gemini Flash is the only AI used. No other AI provider is part of the app. Telegram and Resend are used only to deliver the copy to Kavya.
 - Days since launch is whole days only (Product Hunt's launch time is day-level).
+- The app sends basic browser security headers (no sniffing, no framing, a strict referrer policy) and passes an automated accessibility scan (axe) on the landing page, the dashboard, an expanded row and the fit legend, on desktop and phone widths.
