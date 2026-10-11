@@ -31,28 +31,43 @@ export const URGENCY_LABEL: Record<Urgency, string> = {
   closing: "Window closing",
 };
 
-/** Order in which maker comments are counted: most upvotes first, then more comments, then name/id. */
-export function countingOrder<T extends Pick<Launch, "id" | "votesCount" | "commentsCount" | "name">>(list: T[]): T[] {
+type Potential = Pick<Launch, "id" | "votesCount" | "commentsCount" | "name">;
+
+/**
+ * Cheap stand-in for the real score, used BEFORE maker comments are counted: the same 50/50 blend of upvotes and
+ * comments, each as a share of the best in the reference set. Total comments (free in the list query) are an upper
+ * bound for maker comments, because every maker comment is a comment. It only decides which launches to keep and
+ * which to count first; the real score and rank are still computed from upvotes and maker comments alone.
+ */
+export function potentialOf(l: Potential, maxVotes: number, maxComments: number): number {
+  const v = maxVotes > 0 ? l.votesCount / maxVotes : 0;
+  const c = maxComments > 0 ? l.commentsCount / maxComments : 0;
+  return 0.5 * v + 0.5 * c;
+}
+
+/** Highest potential first, then more upvotes, then name/id (stable and deterministic). */
+export function potentialOrder<T extends Potential>(list: T[], reference: Potential[] = list): T[] {
+  const maxVotes = Math.max(0, ...reference.map((l) => l.votesCount));
+  const maxComments = Math.max(0, ...reference.map((l) => l.commentsCount));
   return [...list].sort(
     (a, b) =>
+      potentialOf(b, maxVotes, maxComments) - potentialOf(a, maxVotes, maxComments) ||
       b.votesCount - a.votesCount ||
-      b.commentsCount - a.commentsCount ||
       a.name.localeCompare(b.name) ||
       a.id.localeCompare(b.id),
   );
 }
 
+/** Order in which maker comments are counted: highest potential first (see potentialOf). */
+export const countingOrder = potentialOrder;
+
 /**
- * Which launches to count in THIS run: those without a valid saved count, highest upvotes first,
+ * Which launches to count in THIS run: those without a valid saved count, highest potential first,
  * at most `cap` of them. Launches that already have a valid count are never selected, so counts
  * accumulate from run to run instead of being capped by position in the list.
  */
-export function selectToCount<T extends Pick<Launch, "id" | "votesCount" | "commentsCount" | "name">>(
-  launches: T[],
-  hasValidCount: ReadonlySet<string>,
-  cap: number,
-): T[] {
-  return countingOrder(launches.filter((l) => !hasValidCount.has(l.id))).slice(0, Math.max(0, cap));
+export function selectToCount<T extends Potential>(launches: T[], hasValidCount: ReadonlySet<string>, cap: number): T[] {
+  return potentialOrder(launches.filter((l) => !hasValidCount.has(l.id)), launches).slice(0, Math.max(0, cap));
 }
 
 export interface ScoreInput {

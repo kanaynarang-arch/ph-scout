@@ -1,3 +1,4 @@
+import { potentialOrder } from "./score";
 import {
   CATEGORIES,
   categoriesForSlugs,
@@ -119,8 +120,10 @@ function toLaunch(p: RawPost, slug: string): Launch {
 }
 
 /**
- * Launches (featured or not) from the last WINDOW_DAYS days. Per category: top PER_CATEGORY_TOP by votes,
- * up to MAX_PAGES_PER_TOPIC pages per topic, de-duplicated by post id.
+ * Launches (featured or not) from the last WINDOW_DAYS days. Each topic is read by votes, MAX_PAGES_PER_TOPIC pages deep,
+ * de-duplicated by post id. Per category the PER_CATEGORY_TOP launches with the most potential are kept: a 50/50 blend of
+ * upvotes and total comments (potentialOf), so a launch with fewer votes but a very active comment thread is not
+ * cut just because it sits lower by votes alone.
  */
 export async function fetchLaunches(now: Date, rate: RateState): Promise<Launch[]> {
   const since = new Date(now.getTime() - WINDOW_DAYS * 86_400_000).toISOString();
@@ -144,8 +147,7 @@ export async function fetchLaunches(now: Date, rate: RateState): Promise<Launch[
               } else byId.set(l.id, l);
               ids.add(l.id);
             }
-            // Page 2 only when this category still has fewer than the top-N unique launches.
-            if (!data.posts.pageInfo.hasNextPage || ids.size >= PER_CATEGORY_TOP) break;
+            if (!data.posts.pageInfo.hasNextPage) break;
             after = data.posts.pageInfo.endCursor;
           }
         }),
@@ -153,12 +155,11 @@ export async function fetchLaunches(now: Date, rate: RateState): Promise<Launch[
     }),
   );
 
-  // Keep the top PER_CATEGORY_TOP by votes in each category.
+  // Keep the PER_CATEGORY_TOP launches with the most potential in each category (same reference maxima for all).
+  const pool = [...byId.values()];
   const keep = new Set<string>();
   for (const ids of perCategory.values()) {
-    [...ids]
-      .map((id) => byId.get(id)!)
-      .sort((a, b) => b.votesCount - a.votesCount)
+    potentialOrder([...ids].map((id) => byId.get(id)!), pool)
       .slice(0, PER_CATEGORY_TOP)
       .forEach((l) => keep.add(l.id));
   }

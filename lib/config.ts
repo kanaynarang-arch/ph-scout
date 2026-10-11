@@ -1,8 +1,8 @@
 // All tunable constants live here.
 export const WINDOW_DAYS = 7;
-export const PER_CATEGORY_TOP = 20; // top launches by votes per category
+export const PER_CATEGORY_TOP = 25; // launches kept per category, chosen by upvotes AND total comments (see potentialOrder)
 export const PAGE_SIZE = 20;
-export const MAX_PAGES_PER_TOPIC = 2;
+export const MAX_PAGES_PER_TOPIC = 4; // pool depth: 80 launches per topic by votes; each page costs about 100 API points
 
 export const MAKER_COMMENT_K = 40; // most launches to fetch maker comments for in ONE run (saved counts accumulate across runs)
 export const MAKER_COMMENT_MAX_PAGES = 4; // pages of comments per post

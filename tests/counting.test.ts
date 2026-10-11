@@ -24,8 +24,13 @@ const mk = (id: string, votes: number, comments = 5): Launch => ({
 
 describe("countingOrder / selectToCount", () => {
   const list = [mk("a", 10), mk("b", 50), mk("c", 30), mk("d", 50, 9), mk("e", 1)];
-  it("orders by upvotes (most first), then comments", () => {
+  it("orders by potential: a 50/50 blend of upvotes and total comments (upvotes win when comments are equal)", () => {
     expect(countingOrder(list).map((l) => l.id)).toEqual(["d", "b", "c", "a", "e"]);
+  });
+  it("a quieter launch with a much busier comment thread is counted before a silent one with more upvotes", () => {
+    const busy = mk("busy", 40, 90);
+    const silent = mk("silent", 60, 2);
+    expect(countingOrder([silent, busy]).map((l) => l.id)).toEqual(["busy", "silent"]);
   });
   it("skips launches that already have a valid count", () => {
     expect(selectToCount(list, new Set(["d", "c"]), 10).map((l) => l.id)).toEqual(["b", "a", "e"]);
