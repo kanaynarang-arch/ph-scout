@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GeminiRun } from "../lib/gemini";
 import type { Launch } from "../lib/types";
+import { fakeQuery, store } from "./fake-db";
 
-delete process.env.DATABASE_URL; // memory-only
+vi.mock("../lib/db", () => ({ dbConfigured: () => true, query: (t: string, p?: unknown[]) => fakeQuery(t, p), DbError: class extends Error {} }));
+
 process.env.GEMINI_API_KEY = "test";
 
-import { _clearMemory } from "../lib/cache";
+import { _clearLocks } from "../lib/cache";
 import { runScout } from "../lib/pipeline";
 import { PhError } from "../lib/producthunt";
 
@@ -23,7 +25,7 @@ const okGenerate = async (ls: Launch[]): Promise<GeminiRun> => ({
   failed: false, partial: false, calls: 1,
 });
 
-beforeEach(() => _clearMemory());
+beforeEach(() => (store.clear(), _clearLocks()));
 
 describe("runScout", () => {
   it("returns LIVE with a ranked list and a hidden-votes group", async () => {
@@ -60,7 +62,7 @@ describe("runScout", () => {
     expect(bad.ai.available).toBe(false);
     expect(bad.warnings[0]).toMatch(/AI summaries unavailable/);
     expect(bad.ranked.every((r) => r.ai.angle === "No angle available — review the launch page")).toBe(true);
-    _clearMemory();
+    (store.clear(), _clearLocks());
     const good = await runScout({ now: NOW, deps: deps(true) });
     expect(bad.ranked.map((r) => r.id)).toEqual(good.ranked.map((r) => r.id));
   });

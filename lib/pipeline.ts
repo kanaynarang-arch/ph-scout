@@ -279,7 +279,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
   };
   const [, seen] = await Promise.all([aiPhase(), source === "LIVE" ? recordFirstSeen(launches.map((l) => l.id)) : Promise.resolve(null)]);
   if (!aiAvailable) warnings.unshift("AI summaries unavailable. The ranked list is unchanged: ranking never depends on Gemini.");
-  if (dbProblem) warnings.push("The saved-copy database was unavailable for part of this run, so memory and live data were used.");
+  if (dbProblem) warnings.push("The saved-copy database was unavailable for part of this run, so live data was used.");
 
   // ---- 5. Build rows ----
   const seenAt = (id: string) => seen?.get(id) ?? null;

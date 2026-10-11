@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GeminiRun } from "../lib/gemini";
 import type { Launch } from "../lib/types";
+import { fakeQuery, store } from "./fake-db";
 
-delete process.env.DATABASE_URL; // memory-only
+vi.mock("../lib/db", () => ({ dbConfigured: () => true, query: (t: string, p?: unknown[]) => fakeQuery(t, p), DbError: class extends Error {} }));
+
 process.env.GEMINI_API_KEY = "test";
 process.env.PH_API_TOKEN = "test-token";
 
-import { _clearMemory, writeMany } from "../lib/cache";
+import { _clearLocks, writeMany } from "../lib/cache";
 import { RATE_LIMIT_RESERVE } from "../lib/config";
 import { runScout } from "../lib/pipeline";
 import { countMakerCommentsBatch, type RateState } from "../lib/producthunt";
@@ -91,7 +93,7 @@ describe("countMakerCommentsBatch stops at the reserve", () => {
 });
 
 describe("counts accumulate across runs", () => {
-  beforeEach(() => _clearMemory());
+  beforeEach(() => (store.clear(), _clearLocks()));
 
   const LAUNCHES = [mk("1", 100), mk("2", 90), mk("3", 80), mk("4", 70), mk("5", 60), mk("6", 50)];
   const okGenerate = async (ls: Launch[]): Promise<GeminiRun> => ({

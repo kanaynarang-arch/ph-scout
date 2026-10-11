@@ -1,7 +1,7 @@
 import { CACHE_NS, LOCK_TTL_MS, PURGE_GRACE_MS, PURGE_LIMIT } from "./config";
 import { dbConfigured, query } from "./db";
 
-// Neon-backed cache. A per-instance memory layer sits in front of it.
+// Neon-backed cache (no in-memory layer: with no database every run fetches live).
 // A database error is NOT an empty cache: the caller is told the DB is unavailable.
 
 export interface Entry<T> {
@@ -12,7 +12,6 @@ export interface Entry<T> {
 
 export const key = (...parts: string[]) => `${CACHE_NS}:${parts.join(":")}`;
 
-const memory = new Map<string, Entry<unknown>>();
 const isFresh = (e: Entry<unknown>, now = Date.now()) => Date.parse(e.expiresAt) > now;
 
 type Validate<T> = (v: unknown) => v is T;
@@ -29,58 +28,31 @@ export interface ReadResult<T> {
   dbError: boolean;
 }
 
-/** Read many keys (memory first, then Neon). Entries may be expired (stale); the caller decides. */
+/** Read many keys from Neon. Entries may be expired (stale); the caller decides. */
 export async function readMany<T>(keys: string[], validate: Validate<T>): Promise<ReadResult<T>> {
   const entries = new Map<string, Entry<T>>();
-  const missing: string[] = [];
-  for (const k of keys) {
-    const m = memory.get(k) as Entry<T> | undefined;
-    if (m && isFresh(m) && validate(m.value)) entries.set(k, m);
-    else missing.push(k);
-  }
-  let dbError = false;
-  if (missing.length && dbConfigured()) {
-    try {
-      const rows = await query<Row>(
-        "SELECT key, value, fetched_at, expires_at FROM cache_entries WHERE key = ANY($1::text[])",
-        [missing],
-      );
-      for (const r of rows) {
-        if (!validate(r.value)) continue; // JSON validated on read
-        const e: Entry<T> = {
-          value: r.value,
-          fetchedAt: new Date(r.fetched_at).toISOString(),
-          expiresAt: new Date(r.expires_at).toISOString(),
-        };
-        entries.set(r.key, e);
-        memory.set(r.key, e);
-      }
-    } catch {
-      dbError = true;
-      // Fall back to whatever stale memory we hold.
-      for (const k of missing) {
-        const m = memory.get(k) as Entry<T> | undefined;
-        if (m && validate(m.value)) entries.set(k, m);
-      }
+  if (!keys.length || !dbConfigured()) return { entries, dbError: false };
+  try {
+    const rows = await query<Row>(
+      "SELECT key, value, fetched_at, expires_at FROM cache_entries WHERE key = ANY($1::text[])",
+      [keys],
+    );
+    for (const r of rows) {
+      if (!validate(r.value)) continue; // JSON validated on read
+      entries.set(r.key, {
+        value: r.value,
+        fetchedAt: new Date(r.fetched_at).toISOString(),
+        expiresAt: new Date(r.expires_at).toISOString(),
+      });
     }
-  } else if (missing.length) {
-    for (const k of missing) {
-      const m = memory.get(k) as Entry<T> | undefined;
-      if (m && validate(m.value)) entries.set(k, m);
-    }
+    return { entries, dbError: false };
+  } catch {
+    return { entries, dbError: true };
   }
-  return { entries, dbError };
 }
 
 export async function writeMany<T>(items: { key: string; value: T; ttlMs: number }[], fetchedAt = new Date()): Promise<boolean> {
   if (!items.length) return true;
-  for (const it of items) {
-    memory.set(it.key, {
-      value: it.value,
-      fetchedAt: fetchedAt.toISOString(),
-      expiresAt: new Date(fetchedAt.getTime() + it.ttlMs).toISOString(),
-    });
-  }
   if (!dbConfigured()) return false;
   try {
     const keys = items.map((i) => i.key);
@@ -165,7 +137,7 @@ export interface Resolved<T> {
   value: T;
   fetchedAt: string;
   status: CacheStatus; // fresh = unexpired saved copy, refreshed = fetched just now, stale = refresh failed, old copy served
-  dbError: boolean; // the database could not be read (memory and live data were used instead)
+  dbError: boolean; // the database could not be read (live data was used instead)
 }
 
 /**
@@ -226,8 +198,7 @@ export async function purgeExpired(): Promise<number> {
   }
 }
 
-/** Test helper: forget memory. */
-export function _clearMemory() {
-  memory.clear();
+/** Test helper: forget the in-instance locks. */
+export function _clearLocks() {
   memoryLocks.clear();
 }

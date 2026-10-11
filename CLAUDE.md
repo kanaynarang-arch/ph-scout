@@ -7,4 +7,4 @@
 - All numbers are computed in code. Gemini writes language only (fit label, one-liner, outreach angle, quote). Rank = score from upvotes and maker comments only.
 - Only public launch text goes to Gemini. No maker or commenter names or IDs.
 - Neon stores only public Product Hunt launch data, maker-comment counts, Gemini outputs, first-seen launch ids, and the send limits (one control row; never message text, tokens or addresses).
-- The app must work with no DATABASE_URL and with Neon down (memory, then bundled snapshot labelled SAMPLE).
+- The app must work with no DATABASE_URL and with Neon down (it then fetches live every time, and falls back to the bundled snapshot labelled SAMPLE).
