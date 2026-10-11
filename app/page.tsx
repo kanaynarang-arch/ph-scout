@@ -123,6 +123,8 @@ export default function Page() {
   const [prevVisit, setPrevVisit] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [noticeUntil, setNoticeUntil] = useState<number | null>(null); // when a "next copy in" countdown ends
+  const [clock, setClock] = useState(() => Date.now());
   const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -139,6 +141,8 @@ export default function Page() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Request failed");
       setData(json as ScoutResponse);
+      const n = (json as ScoutResponse).notification;
+      setNoticeUntil(n?.status === "cooldown" && n.retryInSeconds ? Date.now() + n.retryInSeconds * 1000 : null);
       if ((json as ScoutResponse).source === "LIVE") {
         try { localStorage.setItem(LAST_VISIT_KEY, (json as ScoutResponse).generatedAt); } catch { /* storage blocked */ }
       }
@@ -148,6 +152,26 @@ export default function Page() {
       setLoading(null);
     }
   }
+
+  useEffect(() => {
+    if (noticeUntil === null) return;
+    const t = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [noticeUntil]);
+
+  // One quiet line about the copy sent to Kavya. Shows nothing when sending is off, skipped, or already over.
+  const notice = (() => {
+    const n = data?.notification;
+    if (!n) return null;
+    const where = n.channels?.length === 2 ? "Telegram and email" : n.channels?.[0] === "telegram" ? "Telegram" : "email";
+    if (n.status === "sending") return `Copy being sent to Kavya's ${where}`;
+    if (n.status === "daily_cap") return "Not sent: daily limit reached";
+    if (n.status === "cooldown" && noticeUntil !== null) {
+      const left = Math.ceil((noticeUntil - clock) / 1000);
+      if (left > 0) return `Not sent: next copy in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    }
+    return null;
+  })();
 
   const refreshWaitMin = useMemo(() => {
     void tick;
@@ -204,7 +228,7 @@ export default function Page() {
   return (
     <main>
       <h1>ProductHunt Partnership Scout</h1>
-      <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. Nothing is ever sent from this tool.</p>
+      <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
 
       <div className="bar">
         <button className="primary" onClick={() => run(false)} disabled={loading !== null}>{loading === "generate" ? "Generating…" : "Generate"}</button>
@@ -218,6 +242,8 @@ export default function Page() {
           </span>
         )}
       </div>
+
+      {notice && <div className="meta" role="status" style={{ margin: "-4px 0 8px" }}>{notice}</div>}
 
       {loading && <div className="banner" style={{ background: "var(--blue-bg)", color: "var(--accent)" }}>Scanning Product Hunt and writing outreach angles. The first run can take up to a minute.</div>}
       {error && <div className="banner err">{error}</div>}
@@ -274,7 +300,7 @@ export default function Page() {
       {!data && !loading && <div className="empty">Click Generate to build today&apos;s list.</div>}
 
       <div className="foot">
-        Review gate: you read the list and do all outreach yourself. This tool never sends a message, never looks up an email and never contacts founders.
+        Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.
         Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.
       </div>
     </main>

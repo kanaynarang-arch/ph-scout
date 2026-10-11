@@ -39,3 +39,11 @@ export const COUNT_PHASE_DEADLINE_MS = 24_000; // stop counting maker comments a
 export const TOTAL_DEADLINE_MS = 52_000; // return what is ready after this
 
 export const CACHE_NS = process.env.CACHE_NS || "v1"; // override only for isolated tests
+
+// ---- auto-send of a copy of the list to Kavya (Telegram + email), on Generate only ----
+export const APP_PUBLIC_URL = "https://ph-scout.vercel.app";
+export const NOTIFY_COOLDOWN_SECONDS = 5 * 60; // at least 5 minutes between claimed sends
+export const NOTIFY_DAILY_CAP = 10; // per UTC day, both channels together
+export const NOTIFY_TOP_N = 10;
+export const NOTIFY_TIMEOUT_MS = 8000;
+export const TELEGRAM_PART_LIMIT = 3900; // Telegram allows 4096; stay well under 4000

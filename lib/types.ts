@@ -80,6 +80,15 @@ export interface ScoredLaunch {
 
 export type Source = "LIVE" | "CACHED" | "SAMPLE";
 
+export type NotificationStatus = "sending" | "cooldown" | "daily_cap" | "off" | "skipped_sample" | "skipped";
+
+/** Result of the "send a copy to Kavya" decision for this request. Never contains secrets or addresses. */
+export interface Notification {
+  status: NotificationStatus;
+  retryInSeconds?: number;
+  channels?: ("telegram" | "email")[]; // which channels are configured (names only)
+}
+
 export interface ScoutResponse {
   source: Source;
   fetchedAt: string;
@@ -94,4 +103,5 @@ export interface ScoutResponse {
   refresh: { allowedNow: boolean; nextAvailableAt: string | null; applied: boolean };
   newTagging: boolean; // true when firstSeenAt values are usable
   tookMs: number;
+  notification?: Notification;
 }

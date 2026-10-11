@@ -2,7 +2,7 @@
 
 A ranked outreach list for Kavya, who leads partnerships at a B2B SaaS company that helps remote teams run async standups. One click scans Product Hunt launches from the **last 7 days** in four categories (project management, HR tech, developer productivity, team communication) and returns the launches in score order with the six fields the case asks for: product name, founder name, one-line description, upvote count, days since launch and a suggested outreach angle that explains how Kavya's product could complement theirs.
 
-**Nothing is ever sent.** The tool never sends a message, never looks up or scrapes an email address and never contacts a founder. Kavya reads the list and does all outreach herself (the human review gate on the Components Map).
+**The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.** Kavya reads the list and does all outreach herself (the human review gate on the Components Map). The copy goes only to the recipients configured on the server, never to anyone else.
 
 ![Components Map](docs/components-map.png)
 
@@ -40,6 +40,10 @@ Launches posted today often show 0 votes because Product Hunt hides them; those 
 - Rows whose fit is "Likely competitor" are dimmed, not removed, and the order never changes.
 - A coverage line above the list shows how many launches have their maker comments counted and how many rows are Provisional.
 
+## Copy to Kavya (Telegram and email)
+
+Every time Kavya clicks **Generate**, the server also sends a copy of the freshly built list (top 10 by score: rank, name, founders, score, upvotes, maker comments, days since launch, fit, the AI-suggested angle and the Product Hunt link) to **her own Telegram and email**. Only a real Generate click does this: not Refresh now, not `/api/refresh`, not the GitHub Action, not a page load. The page cannot choose recipients or text; both come from server environment variables. It is limited to **one copy per 5 minutes and 10 per UTC day** (kept atomically in Neon), never sent for SAMPLE data, and a failure never affects the list. A public visitor who clicks Generate also triggers a copy to Kavya; the limits keep that small. The page shows one quiet line ("Copy being sent…", "Not sent: next copy in 4:12", "Not sent: daily limit reached"). **To turn it off, unset `NOTIFICATIONS_ENABLED` (or set it to anything but `true`) and redeploy.** Variables: `NOTIFICATIONS_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `RESEND_API_KEY`, `NOTIFY_EMAIL`. Telegram and Resend are not AI; Gemini Flash is still the only AI.
+
 ## Saved copies (Neon Postgres)
 
 Neon Postgres (free plan, added through the Vercel Marketplace) stores **only public Product Hunt launch data, maker-comment counts, Gemini outputs and the first time each launch id was seen** (table `cache_entries`: launch list 1 hour, maker-comment counts 6 hours, Gemini results 7 days; table `launch_seen` powers the display-only "New since your last visit" tag). No secrets, no emails, no personal data. `db/schema.sql` is idempotent. If `DATABASE_URL` is missing or Neon is down, the app still works from memory and then the bundled snapshot. An in-memory layer sits in front of Neon (per server instance).
@@ -56,6 +60,7 @@ Neon Postgres (free plan, added through the Vercel Marketplace) stores **only pu
 | `GEMINI_MODEL` | Gemini Flash model id (default `gemini-3.8-flash`) |
 | `DATABASE_URL` | Neon pooled connection string (added by the Vercel Neon integration) |
 | `CRON_SECRET` | Protects `/api/refresh` |
+| `NOTIFICATIONS_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `RESEND_API_KEY`, `NOTIFY_EMAIL` | Optional copy of the list to Kavya (see above) |
 
 Secrets live only in `.env.local` (git-ignored), Vercel env vars and GitHub Actions secrets. See `.env.example`.
 
@@ -74,5 +79,5 @@ Kavya's company profile (what Gemini may say about her product) is in `config/pr
 ## Notes
 
 - Live data comes from the Product Hunt API, which is meant for **non-commercial** use by default. This is an exam demo and is not presented as a commercial product.
-- Gemini Flash is the only AI used. No other AI provider is part of the app.
+- Gemini Flash is the only AI used. No other AI provider is part of the app. Telegram and Resend are used only to deliver the copy to Kavya.
 - Days since launch is whole days only (Product Hunt's launch time is day-level).
