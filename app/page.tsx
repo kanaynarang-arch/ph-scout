@@ -51,7 +51,8 @@ function Score({ value, animate }: { value: number; animate: boolean }) {
     };
     setShown(0);
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const done = setTimeout(() => setShown(value), 450); // never leave a stale number if frames are paused (background tab)
+    return () => { cancelAnimationFrame(raf); clearTimeout(done); };
   }, [value, animate]);
   return <>{shown.toFixed(1)}</>;
 }
@@ -67,8 +68,8 @@ function HowScored({ r }: { r: ScoredLaunch }) {
   const p = r.parts;
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
   return (
-    <details className="how-wrap">
-      <summary>How this was scored</summary>
+    <div className="how-wrap">
+      <div className="micro">How this was scored</div>
       <dl className="how">
         <dt>Upvotes</dt>
         <dd>{p.votes} of the best {p.maxVotes} = {pct(p.votesShare)} × 50 = {p.votesPoints.toFixed(1)} points</dd>
@@ -80,29 +81,30 @@ function HowScored({ r }: { r: ScoredLaunch }) {
         )}
         <dt>Score</dt>
         <dd><b>{p.votesPoints.toFixed(1)} + {p.makerPoints.toFixed(1)} = {r.score.toFixed(1)}</b></dd>
-        <div className="full">Only upvotes and maker comments count; fit, urgency and category never change the order.</div>
       </dl>
-    </details>
+      <p className="how-note">Only upvotes and maker comments count; fit, urgency and category never change the order.</p>
+    </div>
   );
 }
 
 function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; rank?: number; showNew: boolean; aiShown: boolean; index?: number; onCopied: (msg: string) => void }) {
+  const [open, setOpen] = useState(rank === 1);
   const copy = async () => {
     const ok = await copyText(r.ai.angle);
     onCopied(ok ? "Angle copied" : "Copy failed: select the text");
   };
   const competitor = aiShown && r.ai.fit === "competitor";
-  const cls = ["card"];
-  if (rank !== undefined && rank <= 3) cls.push("top");
-  if (rank === 1) cls.push("top1");
+  const cls = ["lrow"];
+  if (rank !== undefined && rank <= 3) cls.push(`top top${rank}`);
   if (competitor) cls.push("competitor");
+  if (open) cls.push("open");
   if (index !== undefined && index < 10) cls.push("enter");
+  const unverified = aiShown && r.ai.quoteStatus === "unverified" && r.ai.evidenceQuote;
+  const detailId = `d-${r.id}`;
   return (
     <article className={cls.join(" ")} style={index !== undefined && index < 10 ? ({ "--i": index } as React.CSSProperties) : undefined}>
-      <div className="rankcol">
-        {rank !== undefined && (rank <= 3 ? <span className="pill p-medal">#{rank}</span> : <span className="rank">#{rank}</span>)}
-      </div>
-      <div className="top-block">
+      <div className="c-rank">{rank !== undefined && <span className="rank">{rank}</span>}</div>
+      <div className="c-prod">
         <div className="titleline">
           <a className="name" href={r.url} target="_blank" rel="noreferrer">{r.name}</a>
           {showNew && <span className="pill p-new">New since your last visit</span>}
@@ -112,44 +114,56 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
         </div>
         <div className="founder">Founder: <Founder r={r} /></div>
         <p className="desc">{r.ai.oneLiner}</p>
-        <div className="metarow">
-          <span className="mi"><IconUp /><span className="lbl">Upvotes</span> <b>{r.votesHidden ? "votes hidden" : r.votesCount}</b></span>
-          <span className="mi"><IconChat /><span className="lbl">Maker comments</span> <b>{r.makerComments === null ? "not counted" : r.makerComments}</b>{r.makerCommentsStale && <span className="stale" title="Saved copy older than 6 hours; it will be refreshed on a later run">saved copy (CACHED)</span>}</span>
-          <span className="mi"><IconDay /><span className="lbl">Days since launch</span> <b>{r.daysSinceLaunch}</b></span>
-          <span className={`urg urg-${r.urgency}`}><i aria-hidden="true" />{URGENCY_TEXT[r.urgency]}</span>
-        </div>
-        {aiShown && r.ai.fitReason && <div className="fitline">Fit: {r.ai.fitReason}</div>}
-        {r.categories.length > 0 && <div className="fitline cats">{r.categories.map(categoryLabel).join(" · ")}</div>}
       </div>
-      <div className="scorebox">
+      <div className="c-angle">
+        {aiShown ? (
+          <>
+            <p className="angle-prev">{r.ai.angle}</p>
+            {unverified && <span className="pill p-unverified">Unverified quote</span>}
+          </>
+        ) : <span className="noangle">No angle for this launch</span>}
+      </div>
+      <div className="c-stats">
+        <span className="mi"><IconUp /><b>{r.votesHidden ? "hidden" : r.votesCount}</b><span className="lbl">Upvotes</span></span>
+        <span className="mi"><IconChat />{r.makerComments === null ? <b title="Maker comments not counted">not counted</b> : <><b>{r.makerComments}</b><span className="lbl">Maker comments</span></>}{r.makerCommentsStale && <span className="stale" title="Saved copy older than 6 hours; it will be refreshed on a later run">(CACHED)</span>}</span>
+        <span className="mi"><IconDay /><b>{r.daysSinceLaunch}</b><span className="lbl">Days since launch</span></span>
+      </div>
+      <div className="c-score">
         {r.votesHidden ? <div className="hidden">votes hidden</div> : (
           <>
-            <div><span className="score"><Score value={r.score} animate={index !== undefined && index < 10} /></span><span className="of">/100</span></div>
+            <div className="score"><Score value={r.score} animate={index !== undefined && index < 10} /></div>
             <div className={`bar3${r.provisional ? " prov" : ""}`}><i style={{ width: `${Math.max(0, Math.min(100, r.score))}%` }} /></div>
           </>
         )}
       </div>
-      {(aiShown || !r.votesHidden) && (
-        <div className="body">
-          {aiShown && (
-            <div className="angle">
-              <div className="row1">
-                <div>
-                  <div className="micro">Suggested outreach angle</div>
-                  <div className="note">A starting point for you, not a message</div>
+      <button className="c-toggle" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? "Hide" : "Show"} details for ${r.name}`} onClick={() => setOpen(!open)}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
+      </button>
+      {open && (
+        <div className="c-detail" id={detailId}>
+          <div className="d-col">
+            {aiShown && (
+              <>
+                <div className="micro">Suggested outreach angle</div>
+                <p className="angle-full">{r.ai.angle}</p>
+                {r.ai.quoteStatus !== "none" && r.ai.evidenceQuote && (
+                  <div className={`quote${r.ai.quoteStatus === "verified" ? "" : " unv"}`}>
+                    {r.ai.quoteStatus === "verified" ? <span className="q-lbl">From the launch page</span> : <span className="q-lbl">Unverified</span>}
+                    “{r.ai.evidenceQuote}”
+                  </div>
+                )}
+                <div className="d-actions">
+                  <button className="small" onClick={copy}>Copy angle</button>
+                  <span className="note">A starting point for you, not a message</span>
                 </div>
-                <button className="small" onClick={copy}>Copy angle</button>
-              </div>
-              <p>{r.ai.angle}</p>
-              {r.ai.quoteStatus !== "none" && r.ai.evidenceQuote && (
-                <div className={`quote${r.ai.quoteStatus === "verified" ? "" : " unv"}`}>
-                  {r.ai.quoteStatus === "verified" ? <span className="q-lbl">From the launch page</span> : <span className="pill p-unverified" style={{ marginBottom: 4 }}>Unverified</span>}
-                  “{r.ai.evidenceQuote}”
-                </div>
-              )}
-            </div>
-          )}
-          {!r.votesHidden && <HowScored r={r} />}
+              </>
+            )}
+          </div>
+          <div className="d-col">
+            {aiShown && r.ai.fitReason && <p className="fitline"><span className="micro">Fit</span><br />{r.ai.fitReason}</p>}
+            <div className="urgrow"><span className={`urg urg-${r.urgency}`}><i aria-hidden="true" />{URGENCY_TEXT[r.urgency]}</span>{r.categories.length > 0 && <span className="cats">{r.categories.map(categoryLabel).join(" · ")}</span>}</div>
+            {!r.votesHidden && <HowScored r={r} />}
+          </div>
         </div>
       )}
     </article>
@@ -268,105 +282,126 @@ export default function Page() {
 
   const catCount = (id: CategoryId) => (data ? data.ranked.filter((r) => r.categories.includes(id)).length : 0);
 
+  const showHero = !data && !loading;
+  const stateLine = data
+    ? [
+        <span key="r"><b>{data.ranked.length}</b> ranked</span>,
+        <span key="s"><b>{data.counted.of}</b> launches scanned</span>,
+        <span key="m">maker comments counted for <b>{data.counted.n} of {data.counted.of}</b></span>,
+        <span key="p"><b>{provisionalRows}</b> provisional</span>,
+      ]
+    : [];
+
   return (
-    <main>
-      <header className="head">
-        <div className="head-text">
-          <h1>ProductHunt <span className="dim">Partnership Scout</span></h1>
-          <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
-        </div>
-        <div className="actions">
-          <button className="primary" onClick={() => run(false)} disabled={loading !== null}>{loading === "generate" ? "Generating…" : "Generate"}</button>
-          <button onClick={() => run(true)} disabled={loading !== null || !data || refreshWaitMin > 0} title="Fetch the launch list again (once every 5 minutes)">
-            {loading === "refresh" ? "Refreshing…" : refreshWaitMin > 0 ? `Refresh now (in ${refreshWaitMin} min)` : "Refresh now"}
-          </button>
-        </div>
-      </header>
-
-      {data && (
-        <div className="status">
-          <span className={`pill p-${data.source.toLowerCase()}`}>{data.source === "LIVE" && <span className="dot" aria-hidden="true" />}{data.source}</span>
-          <span>{data.source === "SAMPLE" ? "bundled sample data from " : "fetched "}{fmtTime(data.fetchedAt)}</span>
-          {notice && <div className="notice" role="status">{notice}</div>}
-        </div>
-      )}
-
-      {loading && (
-        <>
-          <div className="banner info" role="status">Scanning Product Hunt and writing outreach angles. The first run can take up to a minute.</div>
-          <div aria-hidden="true" style={{ marginTop: 24 }}><div className="skel" /><div className="skel" /><div className="skel" /></div>
-        </>
-      )}
-      {error && <div className="banner err">{error}</div>}
-      {data?.warnings.map((w, i) => <div key={i} className={`banner ${w.startsWith("AI summaries unavailable") || w.startsWith("Live Product Hunt") ? "err" : ""}`}>{w}</div>)}
-
-      {data && (
-        <>
-          <div className="stats">
-            <div className="stat"><div className="micro">Launches scanned</div><div className="num">{data.counted.of}</div></div>
-            <div className="stat"><div className="micro">Maker comments counted</div><div className="num">{data.counted.n} <span>of {data.counted.of}</span></div></div>
-            <div className="stat"><div className="micro">Provisional rows</div><div className="num">{provisionalRows}</div></div>
-          </div>
-          <div className="coverage" role="status">
-            Maker comments counted for <b>{data.counted.n} of {data.counted.of}</b> launches.{" "}
-            {provisionalRows > 0
-              ? <>{provisionalRows} {provisionalRows === 1 ? "row is" : "rows are"} <b>Provisional</b>: {provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted.</>
-              : <>No row is Provisional.</>}
-            {data.counted.stale > 0 && <> {data.counted.stale} {data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).</>}
-          </div>
-
-          <div className="toolbar">
-            <div className="chips" role="group" aria-label="Categories">
-              <button className={`chip ${cat === "all" ? "on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All categories <span className="n">{data.ranked.length}</span></button>
-              {CATEGORIES.map((c) => (
-                <button key={c.id} className={`chip ${cat === c.id ? "on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
-              ))}
+    <>
+      <div className="topbar">
+        <div className="topbar-in">
+          <div className="brand"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></div>
+          {!showHero && (
+            <div className="actions">
+              {data && <span className={`pill p-${data.source.toLowerCase()}`}>{data.source === "LIVE" && <span className="dot" aria-hidden="true" />}{data.source}<span className="when"> · {data.source === "SAMPLE" ? "bundled sample data from " : "fetched "}{fmtTime(data.fetchedAt)}</span></span>}
+              <button onClick={() => run(true)} disabled={loading !== null || !data || refreshWaitMin > 0} title="Fetch the launch list again (once every 5 minutes)">
+                {loading === "refresh" ? "Refreshing…" : refreshWaitMin > 0 ? `Refresh now (in ${refreshWaitMin} min)` : "Refresh now"}
+              </button>
+              <button className="primary" onClick={() => run(false)} disabled={loading !== null}>{loading === "generate" ? "Generating…" : "Generate"}</button>
             </div>
-            <label className="switch">
-              <input type="checkbox" checked={fitOnly} disabled={!data.ai.available} onChange={(e) => setFitOnly(e.target.checked)} />
-              Strong and possible fit only
-            </label>
-          </div>
-
-          <div className="listhead">
-            <div>
-              <h2>Ranked outreach list ({ranked.length})</h2>
-              <p className="hint">In order of score. Filters only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}.</p>
-            </div>
-            <div className="right">
-              <span className="micro">Sorted by score</span>
-              <button className="small" onClick={copyCsv} disabled={exportCount === 0}>Copy as CSV</button>
-              <button className="small" onClick={downloadCsv} disabled={exportCount === 0}>Download CSV</button>
-            </div>
-          </div>
-          <p className="hint" style={{ margin: "-4px 0 12px" }}>Exports the {rowsLabel(exportCount)} currently visible</p>
-          {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
-          {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} />)}
-
-          {data.tooEarly.length > 0 && (
-            <section className="group">
-              <h2>Too early to rank ({tooEarly.length})</h2>
-              <p className="hint" style={{ margin: "0 0 12px" }}>Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
-              {tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} />)}
-            </section>
           )}
+        </div>
+      </div>
 
-          {data.moreLaunches.length > 0 && (
-            <details className="group more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
-              <summary>More launches ({more.length}), in score order, without an angle</summary>
-              {more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} />)}
-            </details>
-          )}
-        </>
-      )}
+      <main>
+        {showHero && (
+          <section className="hero">
+            <div className="micro">Partnerships · last 7 days on Product Hunt</div>
+            <h1>Find the launches worth a conversation.</h1>
+            <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
+            <div className="hero-actions">
+              <button className="primary big" onClick={() => run(false)}>Generate</button>
+              <span className="hint">Takes up to a minute the first time.</span>
+            </div>
+            <ol className="steps">
+              <li><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
+              <li><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
+              <li><span className="micro">03 · Suggest</span><p>Gemini Flash writes an outreach angle backed by a quote from the launch page. It never changes the rank.</p></li>
+            </ol>
+          </section>
+        )}
 
-      {!data && !loading && !error && <div className="empty">Click Generate to build today&apos;s list.</div>}
+        {error && <div className="banner err">{error}</div>}
+        {loading && (
+          <>
+            <div className="banner info" role="status">Scanning Product Hunt and writing outreach angles. The first run can take up to a minute.</div>
+            <div className="table" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="skel" />)}</div>
+          </>
+        )}
+        {data?.warnings.map((w, i) => <div key={i} className={`banner ${w.startsWith("AI summaries unavailable") || w.startsWith("Live Product Hunt") ? "err" : ""}`}>{w}</div>)}
 
-      <footer className="foot">
-        <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
-        <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
-      </footer>
-      <div role="status" aria-live="polite">{toast && <div className="toast">{toast}</div>}</div>
-    </main>
+        {data && (
+          <>
+            <div className="summary" role="status">
+              {stateLine.map((n, i) => <span key={i} className="sum-item">{n}</span>)}
+              {notice && <span className="sum-item note">{notice}</span>}
+            </div>
+            {(provisionalRows > 0 || data.counted.stale > 0) && (
+              <p className="hint cov">
+                {provisionalRows > 0 && <>{provisionalRows} {provisionalRows === 1 ? "row is" : "rows are"} <b>Provisional</b>: {provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted. </>}
+                {data.counted.stale > 0 && <>{data.counted.stale} {data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).</>}
+              </p>
+            )}
+
+            <div className="toolbar">
+              <div className="chips" role="group" aria-label="Categories">
+                <button className={`chip ${cat === "all" ? "on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All <span className="n">{data.ranked.length}</span></button>
+                {CATEGORIES.map((c) => (
+                  <button key={c.id} className={`chip ${cat === c.id ? "on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
+                ))}
+              </div>
+              <label className="switch">
+                <input type="checkbox" checked={fitOnly} disabled={!data.ai.available} onChange={(e) => setFitOnly(e.target.checked)} />
+                Strong and possible fit only
+              </label>
+            </div>
+
+            <div className="listhead">
+              <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
+              <div className="right">
+                <span className="micro">Sorted by score</span>
+                <button className="small" onClick={copyCsv} disabled={exportCount === 0}>Copy as CSV</button>
+                <button className="small" onClick={downloadCsv} disabled={exportCount === 0}>Download CSV</button>
+              </div>
+            </div>
+            <p className="hint" style={{ margin: "0 0 12px" }}>In order of score. Filters only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
+            {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
+            {ranked.length > 0 && (
+              <div className="table">
+                <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Signals</span><span>Score</span><span /></div>
+                {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} />)}
+              </div>
+            )}
+
+            {data.tooEarly.length > 0 && (
+              <section className="group">
+                <h2>Too early to rank <span className="count">{tooEarly.length}</span></h2>
+                <p className="hint" style={{ margin: "0 0 12px" }}>Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
+                <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} />)}</div>
+              </section>
+            )}
+
+            {data.moreLaunches.length > 0 && (
+              <details className="group more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+                <summary>More launches ({more.length}), in score order, without an angle</summary>
+                <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} />)}</div>
+              </details>
+            )}
+          </>
+        )}
+
+        <footer className="foot">
+          <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
+          <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
+        </footer>
+        <div role="status" aria-live="polite">{toast && <div className="toast">{toast}</div>}</div>
+      </main>
+    </>
   );
 }
