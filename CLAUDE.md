@@ -6,5 +6,5 @@
 - The copy to Kavya is sent ONLY by a real Generate click (never Refresh now, /api/refresh, page load or the GitHub Action), only to the recipients in server env vars, never to anyone else, and is limited to one per 5 minutes and 10 per IST day. Switch it off by unsetting NOTIFICATIONS_ENABLED.
 - All numbers are computed in code. Gemini writes language only (fit label, one-liner, outreach angle, quote). Rank = score from upvotes and maker comments only.
 - Only public launch text goes to Gemini. No maker or commenter names or IDs.
-- Neon stores only public Product Hunt launch data, maker-comment counts, Gemini outputs, first-seen launch ids, and the send limits plus a tiny send log (time, status, per-channel result; never message text, tokens or addresses).
+- Neon stores only public Product Hunt launch data, maker-comment counts, Gemini outputs, first-seen launch ids, and the send limits (one control row; never message text, tokens or addresses).
 - The app must work with no DATABASE_URL and with Neon down (memory, then bundled snapshot labelled SAMPLE).

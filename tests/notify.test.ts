@@ -67,7 +67,7 @@ const clock = (start = "2026-10-11T12:00:00Z") => {
   return { now: () => new Date(t), advance: (s: number) => (t += s * 1000) };
 };
 
-function harness(opts: { env?: Record<string, string | undefined>; fetch?: ReturnType<typeof fakeFetch>; limiter?: Limiter & { logs?: unknown[] }; c?: ReturnType<typeof clock> } = {}) {
+function harness(opts: { env?: Record<string, string | undefined>; fetch?: ReturnType<typeof fakeFetch>; limiter?: Limiter; c?: ReturnType<typeof clock> } = {}) {
   const c = opts.c ?? clock();
   const limiter = opts.limiter ?? memoryLimiter(c.now);
   const f = opts.fetch ?? fakeFetch();
@@ -99,7 +99,6 @@ describe("maybeNotify decides who gets a send", () => {
     expect(n).toEqual({ status: "sending", channels: ["telegram", "email"] });
     await h.settle();
     expect(h.f.calls.map((c) => new URL(c.url).host)).toEqual(["api.telegram.org", "api.resend.com"]);
-    expect((h.limiter as ReturnType<typeof memoryLimiter>).logs).toEqual([{ status: "sent", telegram: "sent", email: "sent", rows: 10 }]);
   });
   it("sends for CACHED data too", async () => {
     const h = harness();
@@ -225,17 +224,17 @@ describe("limits", () => {
     expect(secondsToIstMidnight(new Date("2026-10-11T18:29:00Z"))).toBe(60);
     expect(secondsToIstMidnight(new Date("2026-10-11T18:30:00Z"))).toBe(86400);
   });
-  it("a blocked Generate costs nothing: it is logged as blocked and sends nothing", async () => {
+  it("a blocked Generate costs nothing and sends nothing", async () => {
     const h = harness();
     const run = () => maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn, now: h.c.now });
     await run();
-    await run();
+    const second = await run();
     await h.settle();
-    const logs = (h.limiter as ReturnType<typeof memoryLimiter>).logs;
-    expect(logs.map((l) => l.status).sort()).toEqual(["blocked", "sent"]);
+    expect(second.status).toBe("cooldown");
+    expect(h.f.calls.length).toBe(2); // only the first Generate sent (one Telegram + one email)
   });
   it("fails closed when the limits cannot be checked (database unavailable): sends nothing", async () => {
-    const unavailable: Limiter = { claim: async () => ({ ok: false, reason: "unavailable" }), release: async () => {}, log: async () => {} };
+    const unavailable: Limiter = { claim: async () => ({ ok: false, reason: "unavailable" }) };
     const h = harness({ limiter: unavailable });
     const n = await maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => unavailable, schedule: h.schedule, fetchFn: h.f.fn });
     expect(n.status).toBe("off");
@@ -243,36 +242,27 @@ describe("limits", () => {
   });
 });
 
-// ---------------------------------------------------------------- 3. claim release / keep
-describe("claim handling after delivery", () => {
+// ---------------------------------------------------------------- 3. a taken slot is never given back
+describe("after a send attempt", () => {
   const run = async (tg: () => Response | Promise<Response>, em: () => Response | Promise<Response>) => {
-    const h = harness({ fetch: fakeFetch({ telegram: tg, email: em }) });
-    const go = () => maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn, now: h.c.now });
+    const f = fakeFetch({ telegram: tg, email: em });
+    const h = harness({ fetch: f });
+    const go = () => maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: f.fn, now: h.c.now });
     await go();
     await h.settle();
-    const again = await go(); // immediately, to see whether the claim was kept or released
+    const again = await go(); // immediately: the slot must still be taken
     await h.settle();
-    return { status: (h.limiter as ReturnType<typeof memoryLimiter>).logs[0].status, again: again.status };
+    return { again: again.status, calls: f.calls.length };
   };
-  it("releases the claim when BOTH channels clearly fail", async () => {
-    const r = await run(() => Response.json({ ok: false }, { status: 401 }), () => Response.json({ message: "bad key" }, { status: 403 }));
-    expect(r).toEqual({ status: "failed", again: "sending" });
+  it("keeps the slot when both channels fail, and never retries on its own", async () => {
+    expect(await run(() => Response.json({ ok: false }, { status: 401 }), () => Response.json({ message: "bad key" }, { status: 403 }))).toEqual({ again: "cooldown", calls: 2 });
   });
-  it("keeps the claim when one channel succeeds (partial)", async () => {
-    const r = await run(() => Response.json({ ok: true }), () => Response.json({}, { status: 422 }));
-    expect(r).toEqual({ status: "partial", again: "cooldown" });
+  it("keeps the slot after a partial success", async () => {
+    expect(await run(() => Response.json({ ok: true }), () => Response.json({}, { status: 422 }))).toEqual({ again: "cooldown", calls: 2 });
   });
-  it("keeps the claim and never retries when the outcome is ambiguous (timeout / 5xx)", async () => {
+  it("keeps the slot after timeouts or server errors, with exactly one call per channel", async () => {
     const timeout = () => Promise.reject(Object.assign(new Error("timed out"), { name: "TimeoutError" }));
-    const r = await run(timeout, () => Response.json({}, { status: 503 }));
-    expect(r).toEqual({ status: "unknown", again: "cooldown" });
-  });
-  it("never retries an ambiguous send automatically: exactly one call per channel", async () => {
-    const f = fakeFetch({ telegram: () => Response.json({}, { status: 502 }), email: () => Response.json({}, { status: 500 }) });
-    const h = harness({ fetch: f });
-    await maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: f.fn });
-    await h.settle();
-    expect(f.calls.length).toBe(2);
+    expect(await run(timeout, () => Response.json({}, { status: 503 }))).toEqual({ again: "cooldown", calls: 2 });
   });
   it("one failing channel never blocks the other", async () => {
     const f = fakeFetch({ telegram: () => Promise.reject(new Error("boom")) });
@@ -280,21 +270,29 @@ describe("claim handling after delivery", () => {
     await maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: f.fn });
     await h.settle();
     expect(f.calls.some((c) => c.url.includes("api.resend.com"))).toBe(true);
-    expect((h.limiter as ReturnType<typeof memoryLimiter>).logs[0]).toEqual({ status: "partial", telegram: "unknown", email: "sent", rows: 10 });
+  });
+  it("logs only the outcome (no text, tokens or addresses)", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const h = harness();
+    await maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn });
+    await h.settle();
+    const lines = spy.mock.calls.map((c) => c.join(" ")).filter((l) => l.startsWith("notify"));
+    spy.mockRestore();
+    expect(lines).toEqual(['notify {"telegram":true,"email":true,"rows":10}']);
   });
 });
 
 describe("a channel only counts as sent when the provider confirms", () => {
   it("Telegram needs ok:true", async () => {
-    expect(await sendTelegram({ token: "t", chatId: "1" }, ["hi"], fakeFetch({ telegram: () => Response.json({ ok: true }) }).fn)).toBe("sent");
-    expect(await sendTelegram({ token: "t", chatId: "1" }, ["hi"], fakeFetch({ telegram: () => Response.json({ ok: false }) }).fn)).toBe("failed");
+    expect(await sendTelegram({ token: "t", chatId: "1" }, ["hi"], fakeFetch({ telegram: () => Response.json({ ok: true }) }).fn)).toBe(true);
+    expect(await sendTelegram({ token: "t", chatId: "1" }, ["hi"], fakeFetch({ telegram: () => Response.json({ ok: false }) }).fn)).toBe(false);
   });
   it("Resend needs an id", async () => {
     const cfg = { apiKey: "k", to: "a@b.c" };
     const msg = buildMessage(data(), new Date());
-    expect(await sendEmail(cfg, msg, fakeFetch({ email: () => Response.json({ id: "abc" }) }).fn)).toBe("sent");
-    expect(await sendEmail(cfg, msg, fakeFetch({ email: () => Response.json({}) }).fn)).toBe("unknown"); // 200 without an id
-    expect(await sendEmail(cfg, msg, fakeFetch({ email: () => Response.json({}, { status: 403 }) }).fn)).toBe("failed");
+    expect(await sendEmail(cfg, msg, fakeFetch({ email: () => Response.json({ id: "abc" }) }).fn)).toBe(true);
+    expect(await sendEmail(cfg, msg, fakeFetch({ email: () => Response.json({}) }).fn)).toBe(false); // 200 without an id
+    expect(await sendEmail(cfg, msg, fakeFetch({ email: () => Response.json({}, { status: 403 }) }).fn)).toBe(false);
   });
   it("uses an 8 second timeout and no parse_mode", async () => {
     const f = fakeFetch();
@@ -371,7 +369,7 @@ describe("Generate keeps working", () => {
     expect(out.notification.status).toBe("off");
   });
   it("returns the normal list even if the limiter blows up or delivery fails", async () => {
-    const boom: Limiter = { claim: async () => { throw new Error("db exploded"); }, release: async () => {}, log: async () => {} };
+    const boom: Limiter = { claim: async () => { throw new Error("db exploded"); } };
     const base = data();
     const req = new Request("https://x/api/scout", { method: "POST", headers: { "sec-fetch-site": "same-origin" } });
     const out = await handleScout(req, { run: async () => base, limiter: () => boom, schedule: (t) => void t(), env: ENV });
@@ -493,15 +491,10 @@ describe("message content", () => {
     expect(m.text).not.toContain("evil.example");
     expect(m.html).not.toContain("evil.example");
   });
-  it("never puts secrets, addresses or stack traces in the message or the notification result", async () => {
+  it("never puts secrets or addresses in the notification result", async () => {
     const h = harness();
     const n = await maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn });
     await h.settle();
-    const everything = JSON.stringify([n, h.f.calls.map((c) => c.body), (h.limiter as ReturnType<typeof memoryLimiter>).logs]);
-    for (const secret of ["TESTTOKEN", "re_testkey", "kavya@example.com", "111:"]) {
-      // the recipient and the token legitimately appear only where the provider needs them (url / `to`), never in the status or the log
-      expect(JSON.stringify([n, (h.limiter as ReturnType<typeof memoryLimiter>).logs])).not.toContain(secret);
-    }
-    expect(everything).not.toMatch(/\bat\s+\S+\s+\(.*:\d+:\d+\)/); // no stack frames
+    for (const secret of ["TESTTOKEN", "re_testkey", "kavya@example.com", "111:"]) expect(JSON.stringify(n)).not.toContain(secret);
   });
 });

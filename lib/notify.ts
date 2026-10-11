@@ -13,7 +13,6 @@ import { NO_ANGLE } from "./verify";
 // Triggered only by a real Generate. The client supplies no text and no recipients.
 // Recipients and keys come only from server env vars and never leave this module.
 
-export type ChannelResult = "sent" | "failed" | "unknown" | "not_configured";
 type Channel = "telegram" | "email";
 
 // ---------------------------------------------------------------- config / kill switches
@@ -161,10 +160,10 @@ export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_
   return { telegramParts: parts, subject: `PH Scout: top ${entries.length} launches (${ist(clickedAt)})`, text, html, rows: entries.length };
 }
 
-// ---------------------------------------------------------------- delivery (provider confirmation required)
+// ---------------------------------------------------------------- delivery (a channel counts as sent only when the provider confirms)
 type FetchFn = typeof fetch;
 
-async function post(fetchFn: FetchFn, url: string, headers: Record<string, string>, body: unknown): Promise<{ status: number; json: unknown } | "timeout" | "error"> {
+async function post(fetchFn: FetchFn, url: string, headers: Record<string, string>, body: unknown): Promise<{ status: number; json: unknown } | null> {
   try {
     const res = await fetchFn(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS) });
     let json: unknown = null;
@@ -174,94 +173,59 @@ async function post(fetchFn: FetchFn, url: string, headers: Record<string, strin
       /* no body */
     }
     return { status: res.status, json };
-  } catch (e) {
-    return e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError") ? "timeout" : "error";
+  } catch {
+    return null; // timeout or network error
   }
 }
 
-/** A 4xx (other than 429) means the provider clearly refused. Timeouts, network errors, 429 and 5xx are ambiguous. */
-const clearRefusal = (status: number) => status >= 400 && status < 500 && status !== 429;
-
-export async function sendTelegram(cfg: NonNullable<NotifyConfig["telegram"]>, parts: string[], fetchFn: FetchFn): Promise<ChannelResult> {
+/** True only when Telegram answers ok:true. Plain text, no parse_mode. */
+export async function sendTelegram(cfg: NonNullable<NotifyConfig["telegram"]>, parts: string[], fetchFn: FetchFn): Promise<boolean> {
   let sentAny = false;
   for (const text of parts) {
     const r = await post(fetchFn, `https://api.telegram.org/bot${cfg.token}/sendMessage`, {}, { chat_id: cfg.chatId, text, disable_web_page_preview: true });
-    if (r === "timeout" || r === "error") return sentAny ? "sent" : "unknown";
-    const ok = r.status === 200 && (r.json as { ok?: boolean } | null)?.ok === true;
-    if (ok) {
-      sentAny = true;
-      continue;
-    }
-    if (sentAny) return "sent";
-    return clearRefusal(r.status) || r.status === 200 ? "failed" : "unknown";
+    if (r && r.status === 200 && (r.json as { ok?: boolean } | null)?.ok === true) sentAny = true;
+    else break;
   }
-  return sentAny ? "sent" : "failed";
+  return sentAny;
 }
 
-export async function sendEmail(cfg: NonNullable<NotifyConfig["email"]>, msg: BuiltMessage, fetchFn: FetchFn): Promise<ChannelResult> {
+/** True only when Resend returns an id. */
+export async function sendEmail(cfg: NonNullable<NotifyConfig["email"]>, msg: BuiltMessage, fetchFn: FetchFn): Promise<boolean> {
   const r = await post(
     fetchFn,
     "https://api.resend.com/emails",
     { Authorization: `Bearer ${cfg.apiKey}` },
     { from: "PH Scout <onboarding@resend.dev>", to: [cfg.to], subject: msg.subject, text: msg.text, html: msg.html },
   );
-  if (r === "timeout" || r === "error") return "unknown";
-  if (r.status >= 200 && r.status < 300) return typeof (r.json as { id?: unknown } | null)?.id === "string" ? "sent" : "unknown";
-  return clearRefusal(r.status) ? "failed" : "unknown";
+  return !!r && r.status >= 200 && r.status < 300 && typeof (r.json as { id?: unknown } | null)?.id === "string";
 }
 
 // ---------------------------------------------------------------- limiter (atomic claim)
-export interface ClaimToken {
-  lastSentAt: string;
-  day: string;
-}
-export type ClaimResult = { ok: true; token: ClaimToken } | { ok: false; reason: "cooldown" | "daily_cap" | "unavailable"; retryInSeconds?: number };
-
-export interface LogEntry {
-  status: "sent" | "partial" | "failed" | "unknown" | "blocked";
-  telegram: ChannelResult | null;
-  email: ChannelResult | null;
-  rows: number;
-}
+export type ClaimResult = { ok: true } | { ok: false; reason: "cooldown" | "daily_cap" | "unavailable"; retryInSeconds?: number };
 
 export interface Limiter {
+  /** Atomically takes one send slot (1 per 5 minutes, 10 per IST day). A taken slot is never given back. */
   claim(): Promise<ClaimResult>;
-  release(token: ClaimToken): Promise<void>;
-  log(entry: LogEntry): Promise<void>;
 }
 
 /** In-memory limiter with the same rules as the Neon one. Used by tests; the claim section is synchronous (atomic). */
-export function memoryLimiter(clock: () => Date): Limiter & { logs: LogEntry[] } {
+export function memoryLimiter(clock: () => Date): Limiter {
   let last: number | null = null;
   let day = "";
   let count = 0;
-  const logs: LogEntry[] = [];
-  const today = () => istDay(clock());
   return {
-    logs,
     async claim() {
       const now = clock().getTime();
-      const d = today();
+      const d = istDay(clock());
       const dayCount = day === d ? count : 0;
-      if (dayCount >= NOTIFY_DAILY_CAP) {
-        return { ok: false, reason: "daily_cap", retryInSeconds: secondsToIstMidnight(clock()) };
-      }
+      if (dayCount >= NOTIFY_DAILY_CAP) return { ok: false, reason: "daily_cap", retryInSeconds: secondsToIstMidnight(clock()) };
       if (last !== null && now - last < NOTIFY_COOLDOWN_SECONDS * 1000) {
         return { ok: false, reason: "cooldown", retryInSeconds: Math.ceil((last + NOTIFY_COOLDOWN_SECONDS * 1000 - now) / 1000) };
       }
       last = now;
       day = d;
       count = dayCount + 1;
-      return { ok: true, token: { lastSentAt: String(now), day: d } };
-    },
-    async release(token) {
-      if (String(last) === token.lastSentAt && day === token.day) {
-        last = last! - (NOTIFY_COOLDOWN_SECONDS + 1) * 1000;
-        count = Math.max(0, count - 1);
-      }
-    },
-    async log(entry) {
-      logs.push(entry);
+      return { ok: true };
     },
   };
 }
@@ -289,11 +253,9 @@ export async function maybeNotify(d: NotifyDeps): Promise<Notification> {
     if (d.data.source === "SAMPLE") return { status: "skipped_sample", channels: cfg.channels };
     if (d.data.ranked.length === 0) return { status: "skipped", channels: cfg.channels };
 
-    const limiter = d.limiter();
-    const claim = await limiter.claim();
+    const claim = await d.limiter().claim();
     if (!claim.ok) {
       if (claim.reason === "unavailable") return { status: "off" }; // cannot enforce the limits: send nothing
-      await limiter.log({ status: "blocked", telegram: null, email: null, rows: 0 }).catch(() => {});
       return { status: claim.reason, retryInSeconds: claim.retryInSeconds, channels: cfg.channels };
     }
 
@@ -302,21 +264,12 @@ export async function maybeNotify(d: NotifyDeps): Promise<Notification> {
     d.schedule(async () => {
       try {
         const msg = buildMessage(d.data, clickedAt);
-        const [t, e] = await Promise.allSettled([
-          cfg.telegram ? sendTelegram(cfg.telegram, msg.telegramParts, fetchFn) : Promise.resolve<ChannelResult>("not_configured"),
-          cfg.email ? sendEmail(cfg.email, msg, fetchFn) : Promise.resolve<ChannelResult>("not_configured"),
+        const [telegram, email] = await Promise.all([
+          cfg.telegram ? sendTelegram(cfg.telegram, msg.telegramParts, fetchFn).catch(() => false) : Promise.resolve(null),
+          cfg.email ? sendEmail(cfg.email, msg, fetchFn).catch(() => false) : Promise.resolve(null),
         ]);
-        const tg: ChannelResult = t.status === "fulfilled" ? t.value : "unknown";
-        const em: ChannelResult = e.status === "fulfilled" ? e.value : "unknown";
-        const results = [tg, em].filter((x) => x !== "not_configured");
-        const sent = results.filter((x) => x === "sent").length;
-        let status: LogEntry["status"];
-        if (sent === results.length) status = "sent";
-        else if (sent > 0) status = "partial";
-        else if (results.some((x) => x === "unknown")) status = "unknown"; // may have been accepted: keep the claim, never retry
-        else status = "failed";
-        if (status === "failed") await limiter.release(claim.token).catch(() => {}); // clear failure: give the claim back
-        await limiter.log({ status, telegram: tg, email: em, rows: msg.rows }).catch(() => {});
+        // Outcome only (no text, no addresses, no keys): visible in the Vercel logs.
+        console.log("notify", JSON.stringify({ telegram, email, rows: msg.rows }));
       } catch {
         /* a delivery problem never reaches the caller */
       }

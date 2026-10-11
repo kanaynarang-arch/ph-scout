@@ -21,14 +21,3 @@ CREATE TABLE IF NOT EXISTS notify_control (
   day date,
   day_count integer NOT NULL DEFAULT 0
 );
-
--- Small audit log of send attempts: time, status and per-channel result only.
-CREATE TABLE IF NOT EXISTS notify_log (
-  id bigserial PRIMARY KEY,
-  at timestamptz DEFAULT now(),
-  key text,
-  status text NOT NULL,
-  telegram text,
-  email text,
-  row_count integer
-);
