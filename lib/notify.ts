@@ -80,7 +80,9 @@ function founderText(f: ScoredLaunch["founders"]): string {
   return "not shown";
 }
 
-const utc = (d: Date) => d.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+// Times in the message are shown in IST (UTC+5:30, no daylight saving), the way Kavya reads them.
+const IST_OFFSET_MS = 5.5 * 3600 * 1000;
+export const ist = (d: Date) => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16).replace("T", " ") + " IST";
 
 interface Entry {
   title: string;
@@ -118,8 +120,8 @@ export interface BuiltMessage {
 export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_PUBLIC_URL): BuiltMessage {
   const top = data.ranked.slice(0, NOTIFY_TOP_N);
   const entries = top.map((r, i) => entryOf(r, i + 1));
-  const header = `PH Scout: your list (Generate clicked ${utc(clickedAt)})`;
-  const source = `Source: ${data.source}${data.source === "CACHED" ? " (saved copy)" : ""}, fetched ${utc(new Date(data.fetchedAt))}`;
+  const header = `PH Scout: your list (Generate clicked ${ist(clickedAt)})`;
+  const source = `Source: ${data.source}${data.source === "CACHED" ? " (saved copy)" : ""}, fetched ${ist(new Date(data.fetchedAt))}`;
   const footer = [`Open the app: ${appUrl}`, "For you only. Nothing was sent to anyone else."];
 
   const entryText = (e: Entry) => [e.title, `Founders: ${e.founders}`, e.facts, e.angle, e.link].filter(Boolean).join("\n");
@@ -150,7 +152,7 @@ export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_
     `<h2 style="font-size:17px">${escapeHtml(header)}</h2><p>${escapeHtml(source)}</p><ol>${entries.map(li).join("")}</ol>` +
     `<p>Open the app: <a href="${escapeHtml(appUrl)}">${escapeHtml(appUrl)}</a><br>${escapeHtml(footer[1])}</p></div>`;
 
-  return { telegramParts: parts, subject: `PH Scout: top ${entries.length} launches (${utc(clickedAt)})`, text, html, rows: entries.length };
+  return { telegramParts: parts, subject: `PH Scout: top ${entries.length} launches (${ist(clickedAt)})`, text, html, rows: entries.length };
 }
 
 // ---------------------------------------------------------------- delivery (provider confirmation required)

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NOTIFY_COOLDOWN_SECONDS, NOTIFY_DAILY_CAP, TELEGRAM_PART_LIMIT } from "../lib/config";
 import {
   buildMessage,
+  ist,
   clean,
   escapeHtml,
   isRealGenerate,
@@ -387,8 +388,8 @@ describe("message content", () => {
   const msg = () => buildMessage(data(), new Date("2026-10-11T12:05:00Z"));
   it("has the required header, source line, top 10 only, and footer", () => {
     const m = msg();
-    expect(m.text).toContain("PH Scout: your list (Generate clicked 2026-10-11 12:05 UTC)");
-    expect(m.text).toContain("Source: LIVE, fetched 2026-10-11 12:00 UTC");
+    expect(m.text).toContain("PH Scout: your list (Generate clicked 2026-10-11 17:35 IST)");
+    expect(m.text).toContain("Source: LIVE, fetched 2026-10-11 17:30 IST");
     expect(m.rows).toBe(10);
     expect(m.text).toContain("#10 Product 10");
     expect(m.text).not.toContain("#11 ");
@@ -412,6 +413,15 @@ describe("message content", () => {
     const text = buildMessage(d, new Date()).text;
     expect(text).toContain("score 89.0 (provisional)");
     expect(text).toContain("maker comments not counted");
+  });
+  it("shows every time in IST (UTC+5:30), including across midnight, and never as UTC", () => {
+    expect(ist(new Date("2026-10-11T12:05:00Z"))).toBe("2026-10-11 17:35 IST");
+    expect(ist(new Date("2026-10-11T19:00:00Z"))).toBe("2026-10-12 00:30 IST"); // rolls into the next IST day
+    const m = buildMessage(data({ fetchedAt: "2026-10-11T19:00:00.000Z" }), new Date("2026-10-11T20:10:00Z"));
+    expect(m.text).toContain("Generate clicked 2026-10-12 01:40 IST");
+    expect(m.text).toContain("fetched 2026-10-12 00:30 IST");
+    expect(m.subject).toContain("2026-10-12 01:40 IST");
+    expect(m.text + m.html + m.subject).not.toContain("UTC");
   });
   it("says CACHED honestly", () => {
     expect(buildMessage(data({ source: "CACHED" }), new Date()).text).toContain("Source: CACHED (saved copy)");
