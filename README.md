@@ -8,7 +8,7 @@ A ranked outreach list for Kavya, who leads partnerships at a B2B SaaS company t
 
 Components Map: [docs/components-map.png](docs/components-map.png)
 
-The UI follows general dashboard patterns (cards, pills, chips) with original CSS; nothing was copied.
+The UI is a dark dashboard built with original CSS and inline SVG (cards, pills, charts); nothing was copied and no images or external fonts are used.
 
 ## How it works
 
@@ -19,7 +19,7 @@ The UI follows general dashboard patterns (cards, pills, chips) with original CS
 5. **Gemini Flash** (`@google/genai`) labels partnership fit and writes a one-liner, an outreach angle and a verbatim evidence quote, in batched calls. Only launches without a saved result are sent. Only launch text is sent (name, tagline, description, topic names): no maker or commenter names or ids.
    **Draft message:** each row with an angle has a button that asks Gemini Flash (one call, saved in Neon for 7 days) for a short first message in Kavya's voice. It sees only public launch text and the saved angle, never founder names: the greeting carries a placeholder that the page fills in with the founder first name already on screen. Kavya edits it, copies it and sends it herself from her own email or LinkedIn. Links and email addresses in the draft are rejected, the endpoint accepts only a launch id from the page, and nothing is sent by the tool.
 6. Code **verifies every quote** against the launch tagline and description. A quote that fails twice is shown with an "Unverified" tag, never hidden.
-7. The list is shown in score order with tags (fit, category, urgency), a category filter and a "Strong and possible fit only" switch (both only hide rows), and a source badge: **LIVE**, **CACHED** or **SAMPLE**.
+7. The list is shown in score order with tags (fit, category, urgency), category filters in the sidebar and a "Strong and possible fit only" switch (both only hide rows), and a source badge: **LIVE**, **CACHED** or **SAMPLE**.
 
 If Product Hunt fails the app serves the saved copy from Neon labelled **CACHED** (with its original fetch time), and if there is none, the bundled snapshot labelled **SAMPLE**. If Gemini fails, every row keeps its rank and shows neutral text with an "AI summaries unavailable" banner.
 
@@ -41,6 +41,7 @@ Launches posted today often show 0 votes because Product Hunt hides them; those 
 
 - **Copy as CSV / Download CSV** export exactly the rows currently visible (chips and the fit switch applied, in the order shown; "More launches" rows only while that section is open). It runs in the browser from data already on the page, and cells that start with `=`, `+`, `-` or `@` are prefixed with an apostrophe so spreadsheets do not run them as formulas.
 - Rows whose fit is "Likely competitor" are dimmed, not removed, and the order never changes.
+- **Dashboard overview** above the list: four KPI tiles (launches scanned, ranked, strong-fit, contact now), a chart of where the top 10 launches get their points (upvote points and maker-comment points, from each row's score breakdown), top-score bars, a category share donut, a maker-comment coverage gauge and a "Start here" card for the rank 1 launch. Every figure is computed in the browser from the response already returned, with no extra requests, and none of it changes a score or the order.
 - A coverage line above the list shows how many launches have their maker comments counted and how many rows are Provisional.
 
 ## Copy to Kavya (Telegram and email)
