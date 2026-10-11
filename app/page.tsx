@@ -60,7 +60,8 @@ function Score({ value, animate }: { value: number; animate: boolean }) {
 /** A monogram tile: first letter on a muted tint derived from the name (no images, nothing fetched). */
 function Tile({ name }: { name: string }) {
   let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 110;
+  h += 150; // greens, teals, blues and violets only
   const letter = (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
   return <span className="tile" aria-hidden="true" style={{ "--h": h } as React.CSSProperties}>{letter}</span>;
 }
@@ -316,7 +317,7 @@ export default function Page() {
 
   return (
     <>
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffb36b" /><stop offset="1" stopColor="#ff6a4d" /></linearGradient></defs></svg>
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#6ee7b7" /><stop offset="1" stopColor="#10b981" /></linearGradient></defs></svg>
       <div className="topbar">
         <div className="topbar-in">
           <div className="brand"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></div>
