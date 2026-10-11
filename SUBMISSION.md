@@ -11,7 +11,7 @@
 3. Open a row: the six case fields, the **urgency badge**, the fit tag with its reason, and the **outreach angle with its quote** ("From the launch page", checked by code; "Unverified" if it could not be matched).
    Press **Draft message** to get an editable first message to the founder. The tool only writes it (Gemini Flash, no founder names; the page fills in the first name); Kavya edits it, copies it and sends it herself.
 4. Expand a row, then **How this was scored** (upvotes + maker comments only) and try the category filters in the sidebar (tick more than one) and the fit switch (they only hide rows). The four case categories are always scanned; "Add optional categories" lets Kavya also scan up to 2 extras (Sales tools, Marketing tools, Analytics, AI tools), which are off by default.
-5. Scroll to the footer: the tool **never contacts founders, never looks up emails and never sends outreach**. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email. Kavya does all outreach herself. (Generate also shows a quiet line: "Copy being sent to Kavya's Telegram and email", limited to one per 5 minutes.)
+5. Say out loud (the page no longer carries this text): the tool **never contacts founders, never looks up emails and never sends outreach**. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email. Kavya does all outreach herself. (Generate also shows a quiet line: "Copy being sent to Kavya's Telegram and email", limited to one per 5 minutes.)
 
 ## The Nine Checks
 

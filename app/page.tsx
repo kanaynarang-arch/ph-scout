@@ -546,6 +546,14 @@ export default function Page() {
   }, [data]);
 
   const showHero = !data && !loading;
+  // The logo is the homepage button: it goes back to the landing screen (the saved list is fetched again on the next Generate).
+  const goHome = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    setData(null);
+    setError(null);
+    window.scrollTo({ top: 0 });
+  };
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const aiOn = Boolean(data?.ai.available);
@@ -606,7 +614,7 @@ export default function Page() {
 
       {showHero && (
         <>
-          <div className="topbar"><div className="topbar-in"><div className="brand"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></div></div></div>
+          <div className="topbar"><div className="topbar-in"><a className="brand" href="/" onClick={goHome} aria-label="ProductHunt Partnership Scout, go to the homepage"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></a></div></div>
           <main className="landing">
             <section className="hero">
               <div className="hero-copy">
@@ -642,10 +650,6 @@ export default function Page() {
               </ol>
             </section>
             {error && <div className="banner err">{error}</div>}
-            <footer className="foot">
-              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach; its Draft message button only writes text for you to edit and send yourself. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
-              <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
-            </footer>
           </main>
         </>
       )}
@@ -653,7 +657,7 @@ export default function Page() {
       {!showHero && (
         <div className="shell">
           <aside className="side">
-            <div className="brand"><span className="mark" aria-hidden="true" />Partnership Scout</div>
+            <a className="brand" href="/" onClick={goHome} aria-label="Partnership Scout, go to the homepage"><span className="mark" aria-hidden="true" />Partnership Scout</a>
             {data && (
               <nav aria-label="Sections and filters">
                 <p className="micro nav-h">Overview</p>
@@ -678,7 +682,7 @@ export default function Page() {
 
           <div className="content">
             <header className="dash-head">
-              <div className="brand m-brand"><span className="mark" aria-hidden="true" />Partnership Scout</div>
+              <a className="brand m-brand" href="/" onClick={goHome} aria-label="Partnership Scout, go to the homepage"><span className="mark" aria-hidden="true" />Partnership Scout</a>
               <h1><span className="g">{greet}</span> <b>Kavya</b></h1>
               <p className="sub2">Here is this week&apos;s outreach shortlist.</p>
             </header>
@@ -807,10 +811,6 @@ export default function Page() {
               </>
             )}
 
-            <footer className="foot">
-              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach; its Draft message button only writes text for you to edit and send yourself. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
-              <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
-            </footer>
           </div>
         </div>
       )}

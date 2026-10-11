@@ -61,6 +61,9 @@ button.small { height: 30px; padding: 0 12px; font-size: 13px; }
 
 /* ---- brand + badges ---- */
 .brand { font-size: 16px; line-height: 24px; font-weight: 650; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+a.brand { color: inherit; text-decoration: none; border-radius: 12px; }
+a.brand:hover .mark { filter: brightness(1.15); }
+a.brand:focus-visible { outline: 2px solid var(--mint); outline-offset: 4px; }
 .brand .dim { color: var(--t2); font-weight: 500; }
 .mark { width: 28px; height: 28px; border-radius: 9px; display: inline-block; position: relative; flex: none; background: linear-gradient(135deg, #7af5dc, #14a58c); box-shadow: 0 0 22px rgba(62, 232, 200, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.55); }
 .mark::after { content: ""; position: absolute; inset: 8px; border-radius: 50%; border: 2.5px solid rgba(3, 33, 28, 0.85); border-right-color: transparent; transform: rotate(45deg); }
@@ -408,9 +411,6 @@ button.small.accent:hover:not(:disabled) { background: rgba(255, 176, 46, 0.12);
 .skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 12px 22px; border-radius: 999px; z-index: 10; max-width: calc(100vw - 32px); font-size: 14px; font-weight: 500; color: var(--ink); background: linear-gradient(180deg, #7af5dc, #2bd6b7); box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.8); animation: rise 300ms var(--spring) both; }
-.foot { font-size: 12px; line-height: 18px; color: var(--t3); padding: 8px 4px 0; max-width: 860px; }
-.foot p { margin: 0 0 8px; }
-.landing .foot { margin-top: 56px; }
 
 /* ---- accessibility ---- */
 @media (prefers-reduced-transparency: reduce) {
