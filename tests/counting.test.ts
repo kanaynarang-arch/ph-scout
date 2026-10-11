@@ -165,6 +165,22 @@ describe("counts accumulate across runs", () => {
     expect(r.ranked.find((x) => x.id === "1")!.makerCommentsStale).toBe(false);
   });
 
+  it("does not warn about the rate budget when every launch still has a count, even an older saved one", async () => {
+    const deps = { fetchLaunches: async () => LAUNCHES, countBatch: async () => ({ counts: new Map<string, number>(), stopped: "reserve" as const }), generate: okGenerate };
+    await writeMany(["1", "2", "3", "4", "5", "6"].map((id, i) => ({ key: `v1:mc:${id}`, value: 5 + i, ttlMs: -1000 }))); // every launch has an expired saved count
+    const r = await runScout({ now: NOW, deps });
+    expect(r.ranked.every((x) => !x.provisional)).toBe(true);
+    expect(r.warnings.join(" ")).not.toMatch(/not counted yet|Provisional/);
+  });
+
+  it("warns, with the number of uncounted launches, when the budget stops counting and rows are really uncounted", async () => {
+    const deps = { fetchLaunches: async () => LAUNCHES, countBatch: async () => ({ counts: new Map<string, number>(), stopped: "reserve" as const }), generate: okGenerate };
+    const r = await runScout({ now: NOW, deps });
+    const uncounted = [...r.ranked, ...r.moreLaunches].filter((x) => x.provisional).length;
+    expect(uncounted).toBeGreaterThan(0);
+    expect(r.warnings.join(" ")).toContain(`${uncounted} launches are not counted yet`);
+  });
+
   it("an expired count that CAN be refreshed is refreshed and shown as fresh", async () => {
     const seen: string[][] = [];
     const deps = { fetchLaunches: async () => LAUNCHES, countBatch: fakeCounter(6, seen), generate: okGenerate };

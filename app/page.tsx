@@ -33,9 +33,6 @@ async function copyText(text: string): Promise<boolean> {
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-const IconUp = () => (<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" /></svg>);
-const IconChat = () => (<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" /></svg>);
-const IconDay = () => (<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3.2l2 1.3" /></svg>);
 
 /** The score counts up once when a card appears (skipped when the visitor prefers reduced motion). */
 function Score({ value, animate }: { value: number; animate: boolean }) {
@@ -115,7 +112,7 @@ function HowScored({ r }: { r: ScoredLaunch }) {
 }
 
 function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; rank?: number; showNew: boolean; aiShown: boolean; index?: number; onCopied: (msg: string) => void }) {
-  const [open, setOpen] = useState(rank === 1);
+  const [open, setOpen] = useState(false);
   const copy = async () => {
     const ok = await copyText(r.ai.angle);
     onCopied(ok ? "Angle copied" : "Copy failed: select the text");
@@ -175,11 +172,11 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
             {unverified && <span className="pill p-unverified">Unverified quote</span>}
           </>
         ) : <span className="noangle">No angle for this launch</span>}
-      </div>
-      <div className="c-stats">
-        <span className="mi"><IconUp /><b>{r.votesHidden ? "hidden" : r.votesCount}</b><span className="lbl">Upvotes</span></span>
-        <span className="mi"><IconChat />{r.makerComments === null ? <b title="Maker comments not counted">not counted</b> : <><b>{r.makerComments}</b><span className="lbl">Maker comments</span></>}{r.makerCommentsStale && <span className="stale" title="Saved copy older than 6 hours; it will be refreshed on a later run">(CACHED)</span>}</span>
-        <span className="mi"><IconDay /><b>{r.daysSinceLaunch}</b><span className="lbl">Days since launch</span></span>
+        <p className="meta-line">
+          <span>{r.votesHidden ? <b>votes hidden</b> : <><b>{r.votesCount}</b> upvotes</>}</span>
+          <span>{r.makerComments === null ? <>maker comments <b title="Maker comments not counted">not counted</b></> : <><b>{r.makerComments}</b> maker comments</>}{r.makerCommentsStale && <em className="stale" title="Saved copy older than 6 hours; it will be refreshed on a later run"> (CACHED)</em>}</span>
+          <span><b>{r.daysSinceLaunch}</b> days since launch</span>
+        </p>
       </div>
       <div className="c-score">
         {r.votesHidden ? <div className="hidden">votes hidden</div> : <Ring value={r.score} provisional={r.provisional} animate={index !== undefined && index < 10} />}
@@ -599,13 +596,13 @@ export default function Page() {
                     <AreaChart rows={data.ranked.slice(0, 10)} />
                   </div>
                   <div className="card flat c-hot">
-                    <div className="card-h"><h3>Contact now</h3><span className="micro">By rank</span></div>
-                    {hotRows.length === 0 ? <p className="hint">Nothing is urgent right now.</p> : (
+                    <div className="card-h"><h3>Contact now</h3><span className="micro">Launched in the last 2 days</span></div>
+                    {hotRows.length === 0 ? <p className="hint">Nothing launched in the last 2 days.</p> : (
                       <ul className="hotlist">
                         {hotRows.slice(0, 4).map((r) => (
                           <li key={r.id}>
                             <i className="hd" aria-hidden="true" />
-                            <div><a href={r.url} target="_blank" rel="noreferrer">{r.name}</a><span>Launched {r.daysSinceLaunch} {r.daysSinceLaunch === 1 ? "day" : "days"} ago · #{data.ranked.indexOf(r) + 1}</span></div>
+                            <div><a href={r.url} target="_blank" rel="noreferrer">{r.name}</a><span>{r.daysSinceLaunch === 0 ? "Launched today" : `Launched ${r.daysSinceLaunch} ${r.daysSinceLaunch === 1 ? "day" : "days"} ago`} · ranked #{data.ranked.indexOf(r) + 1} overall</span></div>
                             <b>{r.score.toFixed(1)}</b>
                           </li>
                         ))}
@@ -662,7 +659,7 @@ export default function Page() {
                   {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
                   {ranked.length > 0 && (
                     <div className="table">
-                      <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Signals</span><span>Score</span><span /></div>
+                      <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Score</span><span /></div>
                       {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} />)}
                     </div>
                   )}

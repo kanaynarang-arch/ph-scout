@@ -190,6 +190,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
   // ---- 2. Maker comments: saved counts (6 hours), then fetch down the ranked list within the rate budget ----
   const counts = new Map<string, number>();
   const staleCounts = new Set<string>(); // counts that come from an expired saved copy (shown as CACHED)
+  let countStop: CountOutcome["stopped"] | null = null; // why counting ended early, if it did; turned into a warning below
   if (source === "SAMPLE") {
     for (const [id, c] of Object.entries(snapshot.makerCounts)) if (typeof c === "number") counts.set(id, c);
   } else {
@@ -214,11 +215,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
         const fresh = [...out.counts.entries()];
         for (const [id, c] of fresh) counts.set(id, c);
         await writeMany(fresh.map(([id, c]) => ({ key: countKey(id), value: c, ttlMs: TTL_COUNTS_MS })));
-        if (out.stopped === "reserve" || out.stopped === "rate-limit") {
-          warnings.push("The Product Hunt rate budget was reached, so some maker-comment counts were left for the next run (those rows are Provisional).");
-        } else if (out.stopped === "deadline" || out.stopped === "error") {
-          warnings.push("Not every maker-comment count finished in time or one request failed; uncounted rows are Provisional and fill in on the next run.");
-        }
+        countStop = out.stopped;
       }
     }
     // An expired saved count that could not be refreshed is kept, but labelled as a saved copy (CACHED).
@@ -226,6 +223,13 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
       if (counts.has(id)) continue;
       counts.set(id, c);
       staleCounts.add(id);
+    }
+    // Only warn when rows really are uncounted (Provisional). If every launch has a count, even an older saved one, there is nothing to warn about.
+    const uncounted = launches.filter((l) => !counts.has(l.id) && !hiddenSet.has(l.id)).length;
+    if (uncounted > 0 && (countStop === "reserve" || countStop === "rate-limit")) {
+      warnings.push(`Product Hunt limits how fast maker comments can be counted, so ${uncounted} ${uncounted === 1 ? "launch is" : "launches are"} not counted yet. ${uncounted === 1 ? "It is" : "They are"} marked Provisional (the score can only go up) and fill in automatically on the next refresh.`);
+    } else if (uncounted > 0 && (countStop === "deadline" || countStop === "error")) {
+      warnings.push(`Not every maker-comment count finished in time or one request failed, so ${uncounted} ${uncounted === 1 ? "launch is" : "launches are"} Provisional and will fill in on the next run.`);
     }
   }
 
