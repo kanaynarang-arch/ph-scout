@@ -4,6 +4,8 @@ import { NOTIFY_COOLDOWN_SECONDS, NOTIFY_DAILY_CAP, TELEGRAM_PART_LIMIT } from "
 import {
   buildMessage,
   ist,
+  istDay,
+  secondsToIstMidnight,
   clean,
   escapeHtml,
   isRealGenerate,
@@ -199,8 +201,8 @@ describe("limits", () => {
     h.c.advance(NOTIFY_COOLDOWN_SECONDS - 60);
     expect((await run()).status).toBe("sending"); // exactly 5 minutes later
   });
-  it("stops at the daily cap and resets on the next UTC day", async () => {
-    const h = harness({ c: clock("2026-10-11T00:10:00Z") });
+  it("stops at the daily cap and resets at midnight IST (not midnight UTC)", async () => {
+    const h = harness({ c: clock("2026-10-11T08:00:00Z") }); // 13:30 IST
     const run = () => maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn, now: h.c.now });
     for (let i = 0; i < NOTIFY_DAILY_CAP; i++) {
       expect((await run()).status).toBe("sending");
@@ -208,11 +210,20 @@ describe("limits", () => {
     }
     const capped = await run();
     expect(capped.status).toBe("daily_cap");
-    expect(capped.retryInSeconds).toBeGreaterThan(0);
+    expect(capped.retryInSeconds).toBe(secondsToIstMidnight(h.c.now())); // counts down to midnight IST
     await h.settle();
     expect(h.f.calls.length).toBe(NOTIFY_DAILY_CAP * 2);
-    h.c.advance(24 * 3600); // next UTC day
-    expect((await run()).status).toBe("sending");
+    h.c.advance(9 * 3600 + 10 * 60); // from 08:50 to 18:00 UTC = 23:30 IST: still the same IST day
+    expect((await run()).status).toBe("daily_cap");
+    h.c.advance(35 * 60); // 18:35 UTC = 00:05 IST next day (still Oct 11 in UTC)
+    expect(h.c.now().toISOString().slice(0, 10)).toBe("2026-10-11");
+    expect((await run()).status).toBe("sending"); // a UTC-based reset would still say daily_cap here
+  });
+  it("istDay and secondsToIstMidnight are right around midnight IST", () => {
+    expect(istDay(new Date("2026-10-11T18:29:59Z"))).toBe("2026-10-11");
+    expect(istDay(new Date("2026-10-11T18:30:00Z"))).toBe("2026-10-12");
+    expect(secondsToIstMidnight(new Date("2026-10-11T18:29:00Z"))).toBe(60);
+    expect(secondsToIstMidnight(new Date("2026-10-11T18:30:00Z"))).toBe(86400);
   });
   it("a blocked Generate costs nothing: it is logged as blocked and sends nothing", async () => {
     const h = harness();

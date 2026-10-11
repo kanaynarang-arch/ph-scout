@@ -42,10 +42,10 @@ await sql.query("UPDATE notify_control SET last_sent_at = now() - interval '10 m
 const eleventh = await limiter.claim();
 check(`claim #${NOTIFY_DAILY_CAP + 1} is refused as 'daily_cap'`, !eleventh.ok && eleventh.reason === "daily_cap", eleventh.ok ? "" : `(retry in ${eleventh.retryInSeconds}s)`);
 
-// 4. A new UTC day resets the count.
+// 4. A new IST day resets the count.
 await sql.query("UPDATE notify_control SET day = day - 1, last_sent_at = now() - interval '10 minutes' WHERE key = $1", [key]);
 const nextDay = await limiter.claim();
-check("on a new UTC day the count resets", nextDay.ok);
+check("on a new IST day the count resets", nextDay.ok);
 
 // 5. The log accepts a row and holds no text, tokens or addresses (only the columns below).
 await limiter.log({ status: "blocked", telegram: null, email: null, rows: 0 });

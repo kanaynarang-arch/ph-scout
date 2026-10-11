@@ -82,6 +82,12 @@ function founderText(f: ScoredLaunch["founders"]): string {
 
 // Times in the message are shown in IST (UTC+5:30, no daylight saving), the way Kavya reads them.
 const IST_OFFSET_MS = 5.5 * 3600 * 1000;
+/** The IST calendar day (YYYY-MM-DD): the daily send limit resets at midnight IST. */
+export const istDay = (d: Date) => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+export const secondsToIstMidnight = (d: Date) => {
+  const shifted = d.getTime() + IST_OFFSET_MS;
+  return Math.ceil((Math.floor(shifted / 86_400_000 + 1) * 86_400_000 - shifted) / 1000);
+};
 export const ist = (d: Date) => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16).replace("T", " ") + " IST";
 
 interface Entry {
@@ -230,7 +236,7 @@ export function memoryLimiter(clock: () => Date): Limiter & { logs: LogEntry[] }
   let day = "";
   let count = 0;
   const logs: LogEntry[] = [];
-  const today = () => clock().toISOString().slice(0, 10);
+  const today = () => istDay(clock());
   return {
     logs,
     async claim() {
@@ -238,8 +244,7 @@ export function memoryLimiter(clock: () => Date): Limiter & { logs: LogEntry[] }
       const d = today();
       const dayCount = day === d ? count : 0;
       if (dayCount >= NOTIFY_DAILY_CAP) {
-        const midnight = Date.UTC(clock().getUTCFullYear(), clock().getUTCMonth(), clock().getUTCDate() + 1);
-        return { ok: false, reason: "daily_cap", retryInSeconds: Math.ceil((midnight - now) / 1000) };
+        return { ok: false, reason: "daily_cap", retryInSeconds: secondsToIstMidnight(clock()) };
       }
       if (last !== null && now - last < NOTIFY_COOLDOWN_SECONDS * 1000) {
         return { ok: false, reason: "cooldown", retryInSeconds: Math.ceil((last + NOTIFY_COOLDOWN_SECONDS * 1000 - now) / 1000) };
