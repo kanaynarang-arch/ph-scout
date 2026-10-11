@@ -54,7 +54,9 @@ function Score({ value, animate }: { value: number; animate: boolean }) {
     const done = setTimeout(() => setShown(value), 450); // never leave a stale number if frames are paused (background tab)
     return () => { cancelAnimationFrame(raf); clearTimeout(done); };
   }, [value, animate]);
-  return <>{shown.toFixed(1)}</>;
+  // Only show the animated number while this card is animating; otherwise always the real score (a card that moves out of the
+  // top 10 after a filter change must never keep a half-finished animation value).
+  return <>{(animate ? shown : value).toFixed(1)}</>;
 }
 
 /** A monogram tile: first letter on a muted tint derived from the name (no images, nothing fetched). */
@@ -351,7 +353,13 @@ export default function Page() {
   const [data, setData] = useState<ScoutResponse | null>(null);
   const [loading, setLoading] = useState<"generate" | "refresh" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [cat, setCat] = useState<CategoryId | "all">("all");
+  const [cats, setCats] = useState<CategoryId[]>([]); // selected categories; empty means all
+  const allCats = cats.length === 0;
+  const toggleCat = (id: CategoryId) =>
+    setCats((cur) => {
+      const next = cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id];
+      return next.length === CATEGORIES.length ? [] : next; // every category selected is the same as all
+    });
   const [fitOnly, setFitOnly] = useState(false);
   const [prevVisit, setPrevVisit] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -413,7 +421,7 @@ export default function Page() {
   }, [data, tick]);
 
   const visible = (rows: ScoredLaunch[]) =>
-    rows.filter((r) => (cat === "all" || r.categories.includes(cat)) && (!fitOnly || r.ai.fit === "strong" || r.ai.fit === "possible"));
+    rows.filter((r) => (allCats || r.categories.some((c) => cats.includes(c))) && (!fitOnly || r.ai.fit === "strong" || r.ai.fit === "possible"));
   const isNew = (r: ScoredLaunch) =>
     Boolean(data && data.source === "LIVE" && data.newTagging && prevVisit && r.firstSeenAt && Date.parse(r.firstSeenAt) > Date.parse(prevVisit));
 
@@ -542,9 +550,9 @@ export default function Page() {
                 {data.tooEarly.length > 0 && <a className="nav" href="#early">Too early <span className="n">{data.tooEarly.length}</span></a>}
                 {data.moreLaunches.length > 0 && <a className="nav" href="#more" onClick={() => setMoreOpen(true)}>More launches <span className="n">{data.moreLaunches.length}</span></a>}
                 <p className="micro nav-h">Categories</p>
-                <button className={`nav${cat === "all" ? " on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All categories <span className="n">{data.ranked.length}</span></button>
+                <button className={`nav${allCats ? " on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All categories <span className="n">{data.ranked.length}</span></button>
                 {CATEGORIES.map((c) => (
-                  <button key={c.id} className={`nav${cat === c.id ? " on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
+                  <button key={c.id} className={`nav${cats.includes(c.id) ? " on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}><span className="cb" aria-hidden="true" />{c.label} <span className="n">{catCount(c.id)}</span></button>
                 ))}
                 <p className="micro nav-h">View</p>
                 <div className="side-switch">{fitSwitch}</div>
@@ -635,10 +643,10 @@ export default function Page() {
                 </section>
 
                 <div className="m-filters">
-                  <div className="seg" role="group" aria-label="Categories">
-                    <button className={`chip ${cat === "all" ? "on" : ""}`} aria-pressed={cat === "all"} onClick={() => setCat("all")}>All <span className="n">{data.ranked.length}</span></button>
+                  <div className="seg" role="group" aria-label="Categories, pick one or more">
+                    <button className={`chip ${allCats ? "on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All <span className="n">{data.ranked.length}</span></button>
                     {CATEGORIES.map((c) => (
-                      <button key={c.id} className={`chip ${cat === c.id ? "on" : ""}`} aria-pressed={cat === c.id} onClick={() => setCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
+                      <button key={c.id} className={`chip ${cats.includes(c.id) ? "on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
                     ))}
                   </div>
                   {fitSwitch}

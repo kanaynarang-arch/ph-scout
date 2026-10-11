@@ -132,6 +132,11 @@ button.small { height: 30px; padding: 0 12px; font-size: 13px; }
 .nav:hover:not(:disabled) { background: var(--fill); color: var(--t1); }
 .nav.on { background: rgba(62, 232, 200, 0.13); color: var(--t1); font-weight: 600; }
 .nav.on::before { content: ""; position: absolute; left: -16px; top: 9px; bottom: 9px; width: 4px; border-radius: 0 4px 4px 0; background: var(--mint); box-shadow: 0 0 14px var(--mint); }
+.nav .cb { width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--line-hi); flex: none; margin-right: -2px; position: relative; }
+.nav.on .cb { background: var(--mint); border-color: var(--mint); }
+.nav.on .cb::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid var(--ink); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.nav:has(.cb) { justify-content: flex-start; }
+.nav:has(.cb) .n { margin-left: auto; }
 .nav .n { color: var(--t3); font-variant-numeric: tabular-nums; font-size: 12px; }
 .nav.on .n { color: var(--t1); }
 .side-switch { padding: 6px 10px; }
