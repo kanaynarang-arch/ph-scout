@@ -28,7 +28,7 @@ const contentHash = (l: Launch) => sha(`${l.name}\n${l.tagline}\n${l.description
 export const geminiKey = (l: Launch) => key("gem", PROMPT_VERSION, PROFILE_HASH, l.id, contentHash(l));
 const countKey = (id: string) => key("mc", id);
 
-const isLaunchArray = (v: unknown): v is Launch[] =>
+export const isLaunchArray = (v: unknown): v is Launch[] =>
   Array.isArray(v) && v.every((x) => x && typeof x === "object" && typeof (x as Launch).id === "string" && typeof (x as Launch).name === "string" && Array.isArray((x as Launch).makers));
 const isCount = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 

@@ -60,10 +60,10 @@ function Score({ value, animate }: { value: number; animate: boolean }) {
 /** A monogram tile: first letter on a muted tint derived from the name (no images, nothing fetched). */
 function Tile({ name }: { name: string }) {
   let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 120;
-  h += 165; // teals, blues, indigos and purples only
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  const hues = [32, 44, 160, 172, 276, 300]; // amber, gold, teal, mint, purple, orchid: no blues
   const letter = (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
-  return <span className="tile" aria-hidden="true" style={{ "--h": h } as React.CSSProperties}>{letter}</span>;
+  return <span className="tile" aria-hidden="true" style={{ "--h": hues[h % hues.length] } as React.CSSProperties}>{letter}</span>;
 }
 
 /** Score ring: the arc is the score out of 100. */
@@ -117,6 +117,29 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
   const copy = async () => {
     const ok = await copyText(r.ai.angle);
     onCopied(ok ? "Angle copied" : "Copy failed: select the text");
+  };
+  // Draft message: a Gemini-written first message for Kavya to edit and send herself. The page fills in the founder's first name.
+  const [dr, setDr] = useState<{ subject: string; body: string } | null>(null);
+  const [drState, setDrState] = useState<"idle" | "loading" | "error">("idle");
+  const [drErr, setDrErr] = useState("");
+  const firstName = (r.founders.names[0] ?? "").split(/\s+/)[0] || "there";
+  const makeDraft = async () => {
+    setDrState("loading");
+    setDrErr("");
+    try {
+      const res = await fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Drafting failed");
+      setDr({ subject: String(j.subject), body: String(j.body).split("{{first_name}}").join(firstName) });
+      setDrState("idle");
+    } catch (e) {
+      setDrErr(e instanceof Error ? e.message : "Drafting failed");
+      setDrState("error");
+    }
+  };
+  const copyDraft = async () => {
+    if (!dr) return;
+    onCopied((await copyText(`Subject: ${dr.subject}\n\n${dr.body}`)) ? "Message copied" : "Copy failed: select the text");
   };
   const competitor = aiShown && r.ai.fit === "competitor";
   const cls = ["lrow"];
@@ -177,8 +200,21 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
                 )}
                 <div className="d-actions">
                   <button className="small" onClick={copy}>Copy angle</button>
-                  <span className="note">A starting point for you, not a message</span>
+                  {r.ai.angle && <button className="small accent" onClick={makeDraft} disabled={drState === "loading"}>{drState === "loading" ? "Drafting…" : dr ? "Reset draft" : "Draft message"}</button>}
+                  <span className="note">The angle is a starting point for you, not a message.</span>
                 </div>
+                {drState === "error" && <p className="draft-err" role="alert">{drErr}</p>}
+                {dr && (
+                  <div className="draft">
+                    <div className="micro">Draft message · for you to review and send yourself</div>
+                    <label className="d-lbl">Subject<input value={dr.subject} onChange={(e) => setDr({ ...dr, subject: e.target.value })} /></label>
+                    <label className="d-lbl">Message<textarea rows={12} value={dr.body} onChange={(e) => setDr({ ...dr, body: e.target.value })} /></label>
+                    <div className="d-actions">
+                      <button className="small primary" onClick={copyDraft}>Copy message</button>
+                      <span className="note">AI draft. Check every claim, edit it, then send it from your own email or LinkedIn. This tool never sends it.</span>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -193,7 +229,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
   );
 }
 
-const CAT_COLORS = ["#3ee8c8", "#6ab0ff", "#a78bfa", "#f2c66d"];
+const CAT_COLORS = ["#3ee8c8", "#ffb02e", "#a78bfa", "#d4f55a"];
 
 /** Donut of how the ranked launches split across the four categories (a launch can carry more than one tag). */
 function Donut({ parts }: { parts: { label: string; n: number; color: string }[] }) {
@@ -246,6 +282,67 @@ function Gauge({ pct, label }: { pct: number; label: string }) {
         <circle className="prg" cx="50" cy="50" r={r} strokeDasharray={`${(c * pct) / 100} ${c}`} transform="rotate(-90 50 50)" />
       </svg>
       <span className="g-n">{label}</span>
+    </div>
+  );
+}
+
+/** Area chart of where the top launches get their points: upvote points (area) and maker-comment points (dashed), 0 to 50 each. */
+function AreaChart({ rows }: { rows: ScoredLaunch[] }) {
+  const [hi, setHi] = useState<number | null>(null);
+  const n = rows.length;
+  if (n < 2) return <p className="hint">Not enough launches to chart.</p>;
+  const W = 640, H = 250, L = 40, R = 14, T = 14, B = 30;
+  const x = (i: number) => L + (i * (W - L - R)) / (n - 1);
+  const y = (v: number) => T + (H - T - B) * (1 - Math.max(0, Math.min(50, v)) / 50);
+  const clampY = (v: number) => Math.max(T, Math.min(H - B, v));
+  const smooth = (p: [number, number][]) => {
+    let d = `M${p[0][0]},${p[0][1]}`;
+    for (let i = 0; i < p.length - 1; i++) {
+      const p0 = p[i - 1] ?? p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] ?? p2;
+      d += ` C${p1[0] + (p2[0] - p0[0]) / 6},${clampY(p1[1] + (p2[1] - p0[1]) / 6)} ${p2[0] - (p3[0] - p1[0]) / 6},${clampY(p2[1] - (p3[1] - p1[1]) / 6)} ${p2[0]},${p2[1]}`;
+    }
+    return d;
+  };
+  const vp = rows.map((r, i) => [x(i), y(r.parts.votesPoints)] as [number, number]);
+  const mp = rows.map((r, i) => [x(i), y(r.parts.makerPoints)] as [number, number]);
+  const vLine = smooth(vp);
+  const area = `${vLine} L${x(n - 1)},${y(0)} L${x(0)},${y(0)} Z`;
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    const px = ((e.clientX - box.left) / box.width) * W;
+    setHi(Math.max(0, Math.min(n - 1, Math.round(((px - L) / (W - L - R)) * (n - 1)))));
+  };
+  const r = hi !== null ? rows[hi] : null;
+  return (
+    <div className="areachart">
+      <div className="ac-legend"><span><i className="d-amber" />Upvote points</span><span><i className="d-mint" />Maker-comment points</span></div>
+      <div className="ac-wrap">
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Upvote points and maker-comment points of the top ${n} launches, out of 50 each`} onMouseMove={onMove} onMouseLeave={() => setHi(null)}>
+          <defs><linearGradient id="areafill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ff9a2e" stopOpacity="0.55" /><stop offset="1" stopColor="#ff9a2e" stopOpacity="0" /></linearGradient></defs>
+          {[0, 10, 20, 30, 40, 50].map((g) => (
+            <g key={g}><line x1={L} x2={W - R} y1={y(g)} y2={y(g)} className="gl" /><text x={L - 8} y={y(g) + 4} className="ax" textAnchor="end">{g}</text></g>
+          ))}
+          <path d={area} fill="url(#areafill)" />
+          <path d={vLine} className="l-amber" />
+          <path d={smooth(mp)} className="l-mint" />
+          {rows.map((_, i) => <text key={i} x={x(i)} y={H - 8} className="ax" textAnchor="middle">{i + 1}</text>)}
+          {hi !== null && (
+            <g>
+              <line x1={x(hi)} x2={x(hi)} y1={T} y2={H - B} className="cross" />
+              <circle cx={vp[hi][0]} cy={vp[hi][1]} r="5" className="pt-amber" />
+              <circle cx={mp[hi][0]} cy={mp[hi][1]} r="5" className="pt-mint" />
+            </g>
+          )}
+        </svg>
+        {r && hi !== null && (
+          <div className="ac-tip" style={{ left: `${(x(hi) / W) * 100}%` }}>
+            <b>#{hi + 1} {r.name.length > 26 ? `${r.name.slice(0, 25)}…` : r.name}</b>
+            <span><i className="d-amber" />{r.parts.votesPoints.toFixed(1)} upvote points</span>
+            <span><i className="d-mint" />{r.parts.makerPoints.toFixed(1)} maker-comment points</span>
+          </div>
+        )}
+      </div>
+      <p className="hint">Rank on the bottom axis. Each launch earns up to 50 points from upvotes and up to 50 from maker comments.</p>
     </div>
   );
 }
@@ -367,10 +464,11 @@ export default function Page() {
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const aiOn = Boolean(data?.ai.available);
   const strongN = data ? data.ranked.filter((r) => r.ai.fit === "strong").length : 0;
-  const hotN = data ? data.ranked.filter((r) => r.urgency === "hot").length : 0;
+  const hotRows = data ? data.ranked.filter((r) => r.urgency === "hot") : [];
   const coveragePct = data && data.counted.of ? Math.round((data.counted.n / data.counted.of) * 100) : 0;
   const top = data?.ranked[0];
   const catParts = CATEGORIES.map((c, i) => ({ label: c.label, n: catCount(c.id), color: CAT_COLORS[i % CAT_COLORS.length] }));
+  const busy = loading !== null;
 
   const fitSwitch = (
     <label className="switch">
@@ -381,14 +479,7 @@ export default function Page() {
   const statusPill = data ? (
     <span className={`pill p-${data.source.toLowerCase()}`}>{data.source === "LIVE" && <span className="dot" aria-hidden="true" />}{data.source}<span className="when"> · {data.source === "SAMPLE" ? "bundled sample data from " : "fetched "}{fmtTime(data.fetchedAt)}</span></span>
   ) : null;
-  const actionButtons = (
-    <>
-      <button onClick={() => run(true)} disabled={loading !== null || !data || refreshWaitMin > 0} title="Fetch the launch list again (once every 5 minutes)">
-        {loading === "refresh" ? "Refreshing…" : refreshWaitMin > 0 ? `Refresh now (in ${refreshWaitMin} min)` : "Refresh now"}
-      </button>
-      <button className="primary" onClick={() => run(false)} disabled={loading !== null}>{loading === "generate" ? "Generating…" : "Generate"}</button>
-    </>
-  );
+  const refreshLabel = loading === "refresh" ? "Refreshing…" : refreshWaitMin > 0 ? `Refresh now (in ${refreshWaitMin} min)` : "Refresh now";
 
   return (
     <>
@@ -401,31 +492,38 @@ export default function Page() {
             <section className="hero">
               <div className="hero-copy">
                 <p className="eyebrow">Partnerships · last 7 days on Product Hunt</p>
-                <h1>Find the launches worth a conversation.</h1>
+                <h1>Find the launches worth a <em>conversation.</em></h1>
                 <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
-                <div className="hero-actions">
-                  <button className="primary big" onClick={() => run(false)}>Generate</button>
-                  <a className="link" href="#how">How it ranks <span aria-hidden="true">›</span></a>
+                <div className="cta-bar">
+                  <span className="cta-l"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg>Scan Product Hunt, last 7 days, 4 categories</span>
+                  <button className="primary" onClick={() => run(false)}>Generate</button>
                 </div>
                 <p className="hint">Takes up to a minute the first time.</p>
               </div>
-              <div className="frame" aria-hidden="true">
-                <div className="fr-grid">
-                  <div className="fr-card fr-a"><span className="fr-k" /><span className="fr-big" /><svg viewBox="0 0 120 40"><path d="M0 32 C 20 8, 34 36, 56 20 S 92 4, 120 14" /></svg></div>
-                  <div className="fr-card fr-b">{[46, 72, 58, 88, 64].map((h, i) => <span key={i} className="fr-pill"><i style={{ height: `${h}%` }} /></span>)}</div>
-                  <div className="fr-card fr-c"><svg viewBox="0 0 100 100"><circle className="trk" cx="50" cy="50" r="38" /><circle className="prg" cx="50" cy="50" r="38" strokeDasharray="190 239" transform="rotate(-90 50 50)" /></svg></div>
-                  <div className="fr-card fr-d"><span className="fr-k" /><span className="fr-btn" /></div>
-                </div>
+              <div className="net" aria-hidden="true">
+                <svg viewBox="0 0 520 440">
+                  <defs><linearGradient id="netgrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#ffd37a" /><stop offset="1" stopColor="#ff9a2e" /></linearGradient></defs>
+                  {[40, 90, 140, 190, 240, 290, 340, 390].map((ty, i) => (
+                    <g key={ty} opacity={0.35 + (i % 4 === 1 ? 0.5 : i % 3 === 0 ? 0.25 : 0.1)}>
+                      <path d={`M70,220 C230,220 250,${ty} 380,${ty}`} className="net-line" />
+                      <circle cx="380" cy={ty} r="5" className="net-node" />
+                      <rect x="396" y={ty - 7} width={58 + (i % 3) * 14} height="14" rx="7" className="net-bar" />
+                    </g>
+                  ))}
+                  <circle cx="70" cy="220" r="42" className="net-core-o" /><circle cx="70" cy="220" r="26" className="net-core" />
+                </svg>
+                <div className="net-card"><span className="fr-k" /><span className="fr-big" /><span className="fr-dots">{Array.from({ length: 22 }, (_, i) => <i key={i} style={{ height: `${20 + ((i * 37) % 70)}%` }} />)}</span></div>
               </div>
+              <div className="strip" aria-label="Categories scanned"><span className="micro">Scans</span>{CATEGORIES.map((c) => <span key={c.id} className="strip-chip">{c.label}</span>)}</div>
               <ol className="steps" id="how">
-                <li><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
-                <li><span className="ico ico-blue" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 16V9M10 16V4M16 16v-5" /></svg></span><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
-                <li><span className="ico ico-violet" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 5h12v8H9l-3.5 3v-3H4z" /></svg></span><span className="micro">03 · Suggest</span><p>Gemini Flash writes an outreach angle backed by a quote from the launch page. It never changes the rank.</p></li>
+                <li className="t-amber"><span className="ico ico-amber" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
+                <li className="t-teal"><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 16V9M10 16V4M16 16v-5" /></svg></span><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
+                <li className="t-purple"><span className="ico ico-purple" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 5h12v8H9l-3.5 3v-3H4z" /></svg></span><span className="micro">03 · Suggest</span><p>Gemini Flash writes an outreach angle backed by a quote from the launch page. It never changes the rank.</p></li>
               </ol>
             </section>
             {error && <div className="banner err">{error}</div>}
             <footer className="foot">
-              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
+              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach; its Draft message button only writes text for you to edit and send yourself. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
               <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
             </footer>
           </main>
@@ -457,13 +555,17 @@ export default function Page() {
 
           <div className="content">
             <header className="dash-head">
-              <div className="dh-text">
-                <div className="brand m-brand"><span className="mark" aria-hidden="true" />Partnership Scout</div>
-                <h1>{greet}, Kavya</h1>
-                <p className="sub2">Here is this week&apos;s outreach shortlist.</p>
-              </div>
-              <div className="actions">{actionButtons}</div>
+              <div className="brand m-brand"><span className="mark" aria-hidden="true" />Partnership Scout</div>
+              <h1><span className="g">{greet}</span> <b>Kavya</b></h1>
+              <p className="sub2">Here is this week&apos;s outreach shortlist.</p>
             </header>
+
+            <section className="qas" aria-label="Actions">
+              <button className="qa qa-main" onClick={() => run(false)} disabled={busy}><span>{loading === "generate" ? "Generating…" : "Generate"}<small>Build a fresh list</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M10 3l1.8 4.2L16 9l-4.2 1.8L10 15l-1.8-4.2L4 9l4.2-1.8z" /></svg></i></button>
+              <button className="qa" onClick={() => run(true)} disabled={busy || !data || refreshWaitMin > 0} title="Fetch the launch list again (once every 5 minutes)"><span>{refreshLabel}<small>Once every 5 minutes</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-2-4.5M16 3v3.500h-3.500" /></svg></i></button>
+              <button className="qa" onClick={copyCsv} disabled={exportCount === 0}><span>Copy as CSV<small>{rowsLabel(exportCount)} visible</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M7 7h9v9H7zM4 13V4h9" /></svg></i></button>
+              <button className="qa" onClick={downloadCsv} disabled={exportCount === 0}><span>Download CSV<small>{rowsLabel(exportCount)} visible</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M10 3v9m-3.500-3.500L10 12l3.500-3.500M4 16h12" /></svg></i></button>
+            </section>
 
             {error && <div className="banner err">{error}</div>}
             {loading && (
@@ -477,26 +579,35 @@ export default function Page() {
             {data && (
               <>
                 <section className="kpis" id="overview" aria-label="Summary">
-                  <div className="kpi"><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><div><div className="kn">{data.counted.of}</div><div className="kl">Launches scanned</div></div></div>
-                  <div className="kpi"><span className="ico ico-blue" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h12M4 14h8" /></svg></span><div><div className="kn">{data.ranked.length}</div><div className="kl">Ranked launches</div></div></div>
-                  <div className="kpi"><span className="ico ico-green" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m4 10.5 4 4 8-9" /></svg></span><div><div className="kn">{aiOn ? strongN : "–"}</div><div className="kl">Strong-fit launches</div></div></div>
-                  <div className="kpi"><span className="ico ico-violet" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1 1 1.500 1.500 1.500C10.500 7 10 5 10 3z" /></svg></span><div><div className="kn">{hotN}</div><div className="kl">Contact now</div></div></div>
+                  <div className="kpi k-amber"><span className="ico ico-amber" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><div className="kn">{data.counted.of}</div><div className="kl">Launches scanned</div></div>
+                  <div className="kpi k-teal"><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h12M4 14h8" /></svg></span><div className="kn">{data.ranked.length}</div><div className="kl">Ranked launches</div></div>
+                  <div className="kpi k-lime"><span className="ico ico-lime" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m4 10.500 4 4 8-9" /></svg></span><div className="kn">{aiOn ? strongN : "–"}</div><div className="kl">Strong-fit launches</div></div>
+                  <div className="kpi k-purple"><span className="ico ico-purple" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1 1 1.500 1.500 1.500C10.500 7 10 5 10 3z" /></svg></span><div className="kn">{hotRows.length}</div><div className="kl">Contact now</div></div>
                 </section>
 
                 <section className="bento" aria-label="Insights">
+                  <div className="card flat c-chart">
+                    <div className="card-h"><h3>Where the points come from</h3><span className="micro">Top {Math.min(10, data.ranked.length)} launches</span></div>
+                    <AreaChart rows={data.ranked.slice(0, 10)} />
+                  </div>
+                  <div className="card flat c-hot">
+                    <div className="card-h"><h3>Contact now</h3><span className="micro">By rank</span></div>
+                    {hotRows.length === 0 ? <p className="hint">Nothing is urgent right now.</p> : (
+                      <ul className="hotlist">
+                        {hotRows.slice(0, 4).map((r) => (
+                          <li key={r.id}>
+                            <i className="hd" aria-hidden="true" />
+                            <div><a href={r.url} target="_blank" rel="noreferrer">{r.name}</a><span>Launched {r.daysSinceLaunch} {r.daysSinceLaunch === 1 ? "day" : "days"} ago · #{data.ranked.indexOf(r) + 1}</span></div>
+                            <b>{r.score.toFixed(1)}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="gauge-row"><Gauge pct={coveragePct} label={`${coveragePct}%`} /><div className="cov-text"><b>{data.counted.n} of {data.counted.of}</b> launches counted<p className="hint">{provisionalRows > 0 ? `${provisionalRows} ${provisionalRows === 1 ? "row is" : "rows are"} Provisional: ${provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted.` : "No row is Provisional."}{data.counted.stale > 0 ? ` ${data.counted.stale} ${data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).` : ""}</p></div></div>
+                  </div>
                   <div className="card c-scores">
                     <div className="card-h"><h3>Top scores</h3><span className="micro">Top {Math.min(8, data.ranked.length)} by score</span></div>
                     <PillBars rows={data.ranked.slice(0, 8)} />
-                  </div>
-                  <div className="card c-cov">
-                    <div className="card-h"><h3>Maker-comment coverage</h3></div>
-                    <div className="cov-row">
-                      <Gauge pct={coveragePct} label={`${coveragePct}%`} />
-                      <div className="cov-text">
-                        <b>{data.counted.n} of {data.counted.of}</b> launches counted
-                        <p className="hint">{provisionalRows > 0 ? `${provisionalRows} ${provisionalRows === 1 ? "row is" : "rows are"} Provisional: ${provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted.` : "No row is Provisional."}{data.counted.stale > 0 ? ` ${data.counted.stale} ${data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).` : ""}</p>
-                      </div>
-                    </div>
                   </div>
                   <div className="card c-cats">
                     <div className="card-h"><h3>By category</h3><span className="micro">Share of tags</span></div>
@@ -504,12 +615,20 @@ export default function Page() {
                   </div>
                   {top && (
                     <div className="card c-top">
-                      <span className="micro">Start here</span>
-                      <h3>{top.name} <span className="top-score">{top.score.toFixed(1)}</span></h3>
-                      {aiOn && top.ai.angle && <p>{top.ai.angle}</p>}
-                      <div className="top-actions">
-                        <a className="btn-a" href={top.url} target="_blank" rel="noreferrer">Open launch ↗</a>
-                        {aiOn && top.ai.angle && <button className="ghost-dark" onClick={async () => flash((await copyText(top.ai.angle)) ? "Angle copied" : "Copy failed: select the text")}>Copy angle</button>}
+                      <div className="top-l">
+                        <span className="micro">Start here</span>
+                        <h3>{top.name}</h3>
+                        {aiOn && top.ai.angle && <p>{top.ai.angle}</p>}
+                        <div className="top-actions">
+                          <a className="btn-a" href={top.url} target="_blank" rel="noreferrer">Open launch ↗</a>
+                          {aiOn && top.ai.angle && <button className="ghost-dark" onClick={async () => flash((await copyText(top.ai.angle)) ? "Angle copied" : "Copy failed: select the text")}>Copy angle</button>}
+                        </div>
+                      </div>
+                      <div className="top-stats">
+                        <div><b>{top.score.toFixed(1)}</b><span>Score</span></div>
+                        <div><b>{top.votesHidden ? "–" : top.votesCount}</b><span>Upvotes</span></div>
+                        <div><b>{top.makerComments === null ? "–" : top.makerComments}</b><span>Maker comments</span></div>
+                        <div><b>{top.daysSinceLaunch}</b><span>Days since launch</span></div>
                       </div>
                     </div>
                   )}
@@ -526,14 +645,10 @@ export default function Page() {
                   {notice && <p className="notice" role="status">{notice}</p>}
                 </div>
 
-                <section className="panel" id="list">
+                <section className="panel flat" id="list">
                   <div className="listhead">
                     <h2>Ranked outreach list <span className="count">{ranked.length}</span></h2>
-                    <div className="right">
-                      <span className="micro">Sorted by score</span>
-                      <button className="small" onClick={copyCsv} disabled={exportCount === 0}>Copy as CSV</button>
-                      <button className="small" onClick={downloadCsv} disabled={exportCount === 0}>Download CSV</button>
-                    </div>
+                    <span className="micro">Sorted by score</span>
                   </div>
                   <p className="hint">In order of score. Filters only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}. Exports the {rowsLabel(exportCount)} currently visible.</p>
                   {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
@@ -546,7 +661,7 @@ export default function Page() {
                 </section>
 
                 {data.tooEarly.length > 0 && (
-                  <section className="panel" id="early">
+                  <section className="panel flat" id="early">
                     <div className="listhead"><h2>Too early to rank <span className="count">{tooEarly.length}</span></h2></div>
                     <p className="hint">Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
                     <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} />)}</div>
@@ -554,7 +669,7 @@ export default function Page() {
                 )}
 
                 {data.moreLaunches.length > 0 && (
-                  <details className="panel more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+                  <details className="panel flat more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
                     <summary>More launches ({more.length}), in score order, without an angle</summary>
                     <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} />)}</div>
                   </details>
@@ -563,7 +678,7 @@ export default function Page() {
             )}
 
             <footer className="foot">
-              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
+              <p>Review gate: you read the list and do all outreach yourself. The tool never contacts founders, never looks up emails and never sends outreach; its Draft message button only writes text for you to edit and send yourself. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email.</p>
               <p>Live data comes from the Product Hunt API (non-commercial use); AI text comes from Gemini Flash and never changes the order. Source badge: LIVE = fetched from Product Hunt now or within the last hour, CACHED = an older saved copy after a failed refresh, SAMPLE = bundled demo data.</p>
             </footer>
           </div>

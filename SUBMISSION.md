@@ -8,7 +8,7 @@
 
 1. Open the public URL and click **Generate**.
 2. Point at the **source badge** (LIVE / CACHED / SAMPLE) with its fetch time (bottom of the sidebar), and the coverage card ("N of M launches counted").
-3. Open a row: the six case fields, the **urgency badge**, the fit tag with its reason, and the **outreach angle with its quote** ("From the launch page", checked by code; "Unverified" if it could not be matched).
+3. Open a row: the six case fields, the **urgency badge**, the fit tag with its reason, and the **outreach angle with its quote**, then press **Draft message** to get an editable first message (the tool only writes it; Kavya sends it herself) ("From the launch page", checked by code; "Unverified" if it could not be matched).
 4. Expand a row, then **How this was scored** (upvotes + maker comments only) and try the category filters in the sidebar and the fit switch (they only hide rows).
 5. Scroll to the footer: the tool **never contacts founders, never looks up emails and never sends outreach**. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email. Kavya does all outreach herself. (Generate also shows a quiet line: "Copy being sent to Kavya's Telegram and email", limited to one per 5 minutes.)
 
@@ -33,6 +33,6 @@
 
 **Check killed: 07, Judgment Protected.** The brief describes Kavya's job as reaching out to founders. A tool that did that itself (emailing founders, looking up their addresses, or sending messages automatically) would remove her judgment at the most consequential step, and a wrong or badly timed message cannot be unsent.
 
-So the tool is built to stop at the ranked list with a suggested outreach angle. It never contacts founders, never looks up emails and never sends outreach. Kavya reads the list and does all outreach herself.
+So the tool is built to stop at the ranked list with a suggested outreach angle and, on request, a draft message for Kavya to edit and send herself. It never contacts founders, never looks up emails and never sends outreach. Kavya reads the list and does all outreach herself.
 
 The one thing the app sends is a copy of the list to Kavya's own Telegram and email when she clicks Generate (recipients come from server settings only, at most one per 5 minutes, never for SAMPLE data). It can be switched off by unsetting `NOTIFICATIONS_ENABLED`.
