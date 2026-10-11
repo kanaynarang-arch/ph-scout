@@ -4,7 +4,7 @@ export const PER_CATEGORY_TOP = 20; // top launches by votes per category
 export const PAGE_SIZE = 20;
 export const MAX_PAGES_PER_TOPIC = 2;
 
-export const MAKER_COMMENT_K = 40; // most launches to count maker comments for
+export const MAKER_COMMENT_K = 40; // most launches to fetch maker comments for in ONE run (saved counts accumulate across runs)
 export const MAKER_COMMENT_MAX_PAGES = 4; // pages of comments per post
 export const MAKER_COMMENT_CONCURRENCY = 5;
 export const RATE_LIMIT_RESERVE = 1500; // stop counting when remaining points fall to this

@@ -31,14 +31,28 @@ export const URGENCY_LABEL: Record<Urgency, string> = {
   closing: "Window closing",
 };
 
-/** Cheap preliminary rank used only to decide whom to count maker comments for first. */
-export function preliminaryOrder<T extends Pick<Launch, "votesCount" | "commentsCount" | "createdAt" | "name">>(list: T[]): T[] {
+/** Order in which maker comments are counted: most upvotes first, then more comments, then name/id. */
+export function countingOrder<T extends Pick<Launch, "id" | "votesCount" | "commentsCount" | "name">>(list: T[]): T[] {
   return [...list].sort(
     (a, b) =>
-      b.votesCount + b.commentsCount - (a.votesCount + a.commentsCount) ||
-      Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
-      a.name.localeCompare(b.name),
+      b.votesCount - a.votesCount ||
+      b.commentsCount - a.commentsCount ||
+      a.name.localeCompare(b.name) ||
+      a.id.localeCompare(b.id),
   );
+}
+
+/**
+ * Which launches to count in THIS run: those without a valid saved count, highest upvotes first,
+ * at most `cap` of them. Launches that already have a valid count are never selected, so counts
+ * accumulate from run to run instead of being capped by position in the list.
+ */
+export function selectToCount<T extends Pick<Launch, "id" | "votesCount" | "commentsCount" | "name">>(
+  launches: T[],
+  hasValidCount: ReadonlySet<string>,
+  cap: number,
+): T[] {
+  return countingOrder(launches.filter((l) => !hasValidCount.has(l.id))).slice(0, Math.max(0, cap));
 }
 
 export interface ScoreInput {

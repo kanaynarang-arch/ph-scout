@@ -2,11 +2,34 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CATEGORIES, categoryLabel, type CategoryId } from "@/lib/categories";
+import { toCsv, type CsvRow } from "@/lib/csv";
 import type { ScoredLaunch, ScoutResponse } from "@/lib/types";
 
 const LAST_VISIT_KEY = "ph-scout:lastVisit";
 const URGENCY_TEXT = { hot: "Hot — contact now", week: "Contact this week", closing: "Window closing" } as const;
 const FIT_TEXT = { strong: "Strong fit", possible: "Possible fit", weak: "Weak fit", competitor: "Likely competitor", unrated: "Not rated" } as const;
+
+/** Copy text to the clipboard, with a fallback for browsers that block the async clipboard API. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -28,7 +51,7 @@ function HowScored({ r }: { r: ScoredLaunch }) {
         {p.makerComments === null ? (
           <div>Maker comments: not counted (0 points, so this score is Provisional and can only go up)</div>
         ) : (
-          <div>Maker comments: {p.makerComments} of the best {p.maxMakerComments} = {pct(p.makerShare)} × 50 = {p.makerPoints.toFixed(1)} points</div>
+          <div>Maker comments: {p.makerComments}{r.makerCommentsStale ? " (saved copy older than 6 hours, CACHED)" : ""} of the best {p.maxMakerComments} = {pct(p.makerShare)} × 50 = {p.makerPoints.toFixed(1)} points</div>
         )}
         <div><b>Score = {p.votesPoints.toFixed(1)} + {p.makerPoints.toFixed(1)} = {r.score.toFixed(1)}</b>. Only upvotes and maker comments count; fit, urgency and category never change the order.</div>
       </div>
@@ -39,28 +62,12 @@ function HowScored({ r }: { r: ScoredLaunch }) {
 function Row({ r, rank, showNew, aiShown }: { r: ScoredLaunch; rank?: number; showNew: boolean; aiShown: boolean }) {
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const copy = async () => {
-    let ok = false;
-    try {
-      await navigator.clipboard.writeText(r.ai.angle);
-      ok = true;
-    } catch {
-      // Fallback for browsers that block the async clipboard API.
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = r.ai.angle;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-      } catch { /* nothing else to try */ }
-    }
+    const ok = await copyText(r.ai.angle);
     setCopied(ok ? "ok" : "fail");
     setTimeout(() => setCopied(null), 2000);
   };
   return (
-    <article className="row">
+    <article className={`row${aiShown && r.ai.fit === "competitor" ? " competitor" : ""}`}>
       <div className="row-head">
         <div>
           {rank !== undefined && <span className="rank">#{rank}</span>}
@@ -79,7 +86,7 @@ function Row({ r, rank, showNew, aiShown }: { r: ScoredLaunch; rank?: number; sh
       </div>
       <div className="facts">
         <div><b>Upvotes</b>{r.votesHidden ? "votes hidden" : r.votesCount}</div>
-        <div><b>Maker comments</b>{r.makerComments === null ? "not counted" : r.makerComments}</div>
+        <div><b>Maker comments</b>{r.makerComments === null ? "not counted" : r.makerComments}{r.makerCommentsStale && <span className="meta" title="Saved copy older than 6 hours; it will be refreshed on a later run"> · saved copy (CACHED)</span>}</div>
         <div><b>Days since launch</b>{r.daysSinceLaunch}</div>
       </div>
       <div>
@@ -115,6 +122,8 @@ export default function Page() {
   const [fitOnly, setFitOnly] = useState(false);
   const [prevVisit, setPrevVisit] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   useEffect(() => {
     try { setPrevVisit(localStorage.getItem(LAST_VISIT_KEY)); } catch { /* storage blocked */ }
@@ -156,6 +165,42 @@ export default function Page() {
   const tooEarly = data ? visible(data.tooEarly) : [];
   const more = data ? visible(data.moreLaunches) : [];
 
+  // Coverage of maker comments, straight from the data on the page.
+  const provisionalRows = data ? [...data.ranked, ...data.moreLaunches].filter((r) => r.provisional).length : 0;
+
+  // CSV: exactly the rows currently visible (chips and fit switch applied), in the order shown.
+  // "More launches" rows are included only while that section is open.
+  const csvRows = (): CsvRow[] => {
+    if (!data) return [];
+    const out: CsvRow[] = ranked.map((launch) => ({ rank: data.ranked.indexOf(launch) + 1, launch }));
+    for (const launch of tooEarly) out.push({ rank: null, launch });
+    if (moreOpen) for (const launch of more) out.push({ rank: data.ranked.length + data.moreLaunches.indexOf(launch) + 1, launch });
+    return out;
+  };
+  const flash = (msg: string) => {
+    setExportMsg(msg);
+    setTimeout(() => setExportMsg(null), 3000);
+  };
+  const copyCsv = async () => {
+    const rows = csvRows();
+    const ok = await copyText(toCsv(rows));
+    flash(ok ? `Copied ${rows.length} rows` : "Copy failed: use Download CSV instead");
+  };
+  const downloadCsv = () => {
+    const rows = csvRows();
+    const blob = new Blob(["\uFEFF" + toCsv(rows)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ph-scout-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    flash(`Downloaded ${rows.length} rows`);
+  };
+  const exportCount = data ? ranked.length + tooEarly.length + (moreOpen ? more.length : 0) : 0;
+
   return (
     <main>
       <h1>ProductHunt Partnership Scout</h1>
@@ -191,8 +236,21 @@ export default function Page() {
             </label>
           </div>
 
+          <div className="coverage" role="status">
+            Maker comments counted for <b>{data.counted.n} of {data.counted.of}</b> launches.{" "}
+            {provisionalRows > 0
+              ? <>{provisionalRows} {provisionalRows === 1 ? "row is" : "rows are"} <b>Provisional</b>: {provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted.</>
+              : <>No row is Provisional.</>}
+            {data.counted.stale > 0 && <> {data.counted.stale} {data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).</>}
+          </div>
+
           <h2>Ranked outreach list ({ranked.length})</h2>
           <p className="meta" style={{ marginTop: 0 }}>In order of score. Filters only hide rows. Window: {fmtTime(data.window.from)} to {fmtTime(data.window.to)}.</p>
+          <div className="bar" style={{ margin: "6px 0 2px" }}>
+            <button onClick={copyCsv} disabled={exportCount === 0}>Copy as CSV</button>
+            <button onClick={downloadCsv} disabled={exportCount === 0}>Download CSV</button>
+            <span className="meta" role="status" aria-live="polite">{exportMsg ?? `Exports the ${exportCount} visible rows`}</span>
+          </div>
           {ranked.length === 0 && <div className="empty">No launches match. Widen the filters{data.counted.of === 0 ? `, or no launches were found between ${fmtTime(data.window.from)} and ${fmtTime(data.window.to)}` : ""}.</div>}
           {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown />)}
 
@@ -205,7 +263,7 @@ export default function Page() {
           )}
 
           {data.moreLaunches.length > 0 && (
-            <details style={{ marginTop: 24 }}>
+            <details style={{ marginTop: 24 }} open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
               <summary>More launches ({more.length}), in score order, without an angle</summary>
               {more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} />)}
             </details>

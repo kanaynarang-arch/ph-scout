@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { PROFILE } from "../config/profile";
-import { categoriesOf, daysSinceLaunch, founderInfo, preliminaryOrder, scoreAll, sortByScore, sortTooEarly, urgencyFor, votesHidden } from "./score";
+import { categoriesOf, daysSinceLaunch, founderInfo, scoreAll, selectToCount, sortByScore, sortTooEarly, urgencyFor, votesHidden } from "./score";
 import {
   GEMINI_HIDDEN_EXTRA,
   GEMINI_TOP_N,
@@ -64,6 +64,7 @@ function buildRow(
   ai: GeminiResult | undefined,
   withAi: boolean,
   firstSeenAt: string | null,
+  makerCommentsStale: boolean,
 ): ScoredLaunch {
   const days = daysSinceLaunch(l.createdAt, asOf);
   let aiBlock: ScoredLaunch["ai"];
@@ -91,6 +92,7 @@ function buildRow(
     commentsCount: l.commentsCount,
     createdAt: l.createdAt,
     makerComments,
+    makerCommentsStale,
     votesHidden: hidden,
     daysSinceLaunch: days,
     urgency: urgencyFor(days),
@@ -187,16 +189,16 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
 
   // ---- 2. Maker comments: saved counts (6 hours), then fetch down the ranked list within the rate budget ----
   const counts = new Map<string, number>();
-  const ordered = preliminaryOrder(launches);
+  const staleCounts = new Set<string>(); // counts that come from an expired saved copy (shown as CACHED)
   if (source === "SAMPLE") {
     for (const [id, c] of Object.entries(snapshot.makerCounts)) if (typeof c === "number") counts.set(id, c);
   } else {
     // Launches with no comments or no makers need no API call.
-    for (const l of ordered) if (l.commentsCount === 0 || l.makers.length === 0) counts.set(l.id, 0);
-    const saved = await readMany<number>(ordered.map((l) => countKey(l.id)), isCount);
+    for (const l of launches) if (l.commentsCount === 0 || l.makers.length === 0) counts.set(l.id, 0);
+    const saved = await readMany<number>(launches.map((l) => countKey(l.id)), isCount);
     if (saved.dbError) dbProblem = true;
     const stale = new Map<string, number>();
-    for (const l of ordered) {
+    for (const l of launches) {
       if (counts.has(l.id)) continue;
       const e = saved.entries.get(countKey(l.id));
       if (!e) continue;
@@ -204,16 +206,11 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
       else stale.set(l.id, e.value);
     }
     if (listStatus !== "stale") {
-      let have = 0;
-      const toFetch: Launch[] = [];
-      for (const l of ordered) {
-        if (have + toFetch.length >= MAKER_COMMENT_K) break;
-        if (counts.has(l.id)) have++;
-        else toFetch.push(l);
-      }
-      const slots = Math.max(0, MAKER_COMMENT_K - have);
+      // Counts accumulate: only launches without a valid saved count are fetched, most upvotes first,
+      // until the per-run cap, the rate-limit reserve or the time limit is reached.
+      const toFetch = selectToCount(launches, new Set(counts.keys()), MAKER_COMMENT_K);
       if (toFetch.length) {
-        const out: CountOutcome = await deps.countBatch(toFetch, slots, rate, Math.min(t0 + COUNT_PHASE_DEADLINE_MS, totalDeadline));
+        const out: CountOutcome = await deps.countBatch(toFetch, MAKER_COMMENT_K, rate, Math.min(t0 + COUNT_PHASE_DEADLINE_MS, totalDeadline));
         const fresh = [...out.counts.entries()];
         for (const [id, c] of fresh) counts.set(id, c);
         await writeMany(fresh.map(([id, c]) => ({ key: countKey(id), value: c, ttlMs: TTL_COUNTS_MS })));
@@ -224,8 +221,12 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
         }
       }
     }
-    // Older saved counts fill in what we could not refresh.
-    for (const [id, c] of stale) if (!counts.has(id)) counts.set(id, c);
+    // An expired saved count that could not be refreshed is kept, but labelled as a saved copy (CACHED).
+    for (const [id, c] of stale) {
+      if (counts.has(id)) continue;
+      counts.set(id, c);
+      staleCounts.add(id);
+    }
   }
 
   // ---- 3. Score in code: upvotes and maker comments only ----
@@ -283,7 +284,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
   // ---- 5. Build rows ----
   const seenAt = (id: string) => seen?.get(id) ?? null;
   const rowOf = (l: Launch, withAi: boolean) =>
-    buildRow(l, mc(l), asOf, hiddenSet.has(l.id), hiddenSet.has(l.id) ? null : scoreById.get(l.id)!, results.get(l.id), withAi, seenAt(l.id));
+    buildRow(l, mc(l), asOf, hiddenSet.has(l.id), hiddenSet.has(l.id) ? null : scoreById.get(l.id)!, results.get(l.id), withAi, seenAt(l.id), staleCounts.has(l.id));
   const topSet = new Set(targets.map((l) => l.id));
   const ranked = topRanked.map((l) => rowOf(l, true));
   const moreLaunches = moreRanked.map((l) => rowOf(l, false));
@@ -298,7 +299,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
     tooEarly: tooEarlyRows,
     moreLaunches,
     warnings,
-    counted: { n: visible.filter((l) => counts.has(l.id)).length, of: visible.length },
+    counted: { n: visible.filter((l) => counts.has(l.id)).length, of: visible.length, stale: visible.filter((l) => staleCounts.has(l.id)).length },
     ai: { available: aiAvailable, sentToGemini: sent, reusedSaved: reused, model: geminiModel() },
     refresh: { allowedNow: nextAvailableAt === null || Date.parse(nextAvailableAt) <= Date.now(), nextAvailableAt, applied: refreshApplied },
     newTagging: seen !== null,

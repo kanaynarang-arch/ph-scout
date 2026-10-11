@@ -56,5 +56,8 @@ details summary { cursor: pointer; color: var(--accent); font-size: 13px; margin
 .how div { margin: 2px 0; }
 .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 .foot { margin-top: 40px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
+.row.competitor { opacity: .6; }
+.row.competitor:hover, .row.competitor:focus-within { opacity: 1; }
+.coverage { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 12px; margin: 10px 0; font-size: 14px; }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
 @media (max-width: 560px) { .row-head { flex-direction: column; } .scorebox { text-align: left; } }

@@ -30,9 +30,15 @@ Score = 100 x (0.5 x V + 0.5 x M)
 
 `maxVotes` and `maxMakerComments` are the best values among the current launches. **Assumption: the case names upvotes and maker comments but gives no weights, so they count equally (0.5 each).** This is one constant in `lib/config.ts`. Nothing else enters the score. Fit, urgency, category and tags are labels and never change the order. Ties: newer launch first, then product name. Every row has a "How this was scored" note whose numbers add up to its score.
 
-**Maker-comment limit.** Counting maker replies costs Product Hunt API points (about 100 per page of comments; the limit is 6,250 points per 15 minutes), so maker comments are counted for at most about 40 launches per run. A launch that was not reached shows "not counted" (not 0) and its score is tagged **Provisional**: it treats maker comments as 0, so the true score can only be higher. Counts are saved for 6 hours, so later runs fill in more launches. The page shows "counted for N of M launches". A team with many maker replies but few votes can therefore rank lower than a full count would put it.
+**Maker-comment limit.** Counting maker replies costs Product Hunt API points (about 100 per page of comments; the limit is 6,250 points per 15 minutes), so one run fetches counts for at most 40 launches and stops earlier if the budget falls to a reserve of 1,500 points. **Counts accumulate:** every run (Generate, Refresh now and `/api/refresh`) fetches only launches that have no valid saved count, most upvotes first, and each count is saved for 6 hours, so after a few runs nearly every launch has a real count. A launch that has not been reached yet shows "not counted" and its score is tagged **Provisional**: it treats maker comments as 0, so the true score can only be higher. If a saved count has expired and cannot be refreshed, it is kept but labelled as a saved copy (CACHED). The page says "counted for N of M launches" and how many rows are Provisional.
 
 Launches posted today often show 0 votes because Product Hunt hides them; those go to **Too early to rank** instead of the bottom of the list.
+
+## Small extras on the page
+
+- **Copy as CSV / Download CSV** export exactly the rows currently visible (chips and the fit switch applied, in the order shown; "More launches" rows only while that section is open). It runs in the browser from data already on the page, and cells that start with `=`, `+`, `-` or `@` are prefixed with an apostrophe so spreadsheets do not run them as formulas.
+- Rows whose fit is "Likely competitor" are dimmed, not removed, and the order never changes.
+- A coverage line above the list shows how many launches have their maker comments counted and how many rows are Provisional.
 
 ## Saved copies (Neon Postgres)
 

@@ -229,30 +229,39 @@ export async function countMakerCommentsBatch(
   let inflight = 0;
   const queue = ordered.slice(0, slots);
 
-  async function worker() {
-    while (next < queue.length) {
-      if (Date.now() > deadlineAt) {
-        stopped = "deadline";
-        return;
-      }
-      // Keep a safety margin for requests already in flight.
-      const projected = (rate.remaining ?? Infinity) - inflight * POINTS_PER_COMMENT_PAGE;
-      if (projected <= RATE_LIMIT_RESERVE) {
-        stopped = "reserve";
-        return;
-      }
-      const launch = queue[next++];
-      inflight++;
-      try {
-        counts.set(launch.id, await countMakerComments(launch, rate));
-      } catch (e) {
-        stopped = e instanceof PhError && e.kind === "rate" ? "rate-limit" : "error";
-        next = queue.length; // stop everyone
-      } finally {
-        inflight--;
-      }
+  async function one(): Promise<boolean> {
+    if (next >= queue.length) return false;
+    if (Date.now() > deadlineAt) {
+      stopped = "deadline";
+      return false;
     }
+    // Budget left after this request and the ones already in flight must still be above the reserve.
+    const projected = (rate.remaining ?? Infinity) - (inflight + 1) * POINTS_PER_COMMENT_PAGE;
+    if (projected <= RATE_LIMIT_RESERVE) {
+      stopped = "reserve";
+      return false;
+    }
+    const launch = queue[next++];
+    inflight++;
+    try {
+      counts.set(launch.id, await countMakerComments(launch, rate));
+    } catch (e) {
+      stopped = e instanceof PhError && e.kind === "rate" ? "rate-limit" : "error";
+      next = queue.length; // stop everyone
+      return false;
+    } finally {
+      inflight--;
+    }
+    return true;
   }
+
+  async function worker() {
+    while (await one());
+  }
+
+  // If the remaining budget is unknown, count one launch first to learn it. This stops five parallel
+  // requests from starting when the budget is already at the reserve.
+  if (rate.remaining === null && !(await one())) return { counts, stopped };
   await Promise.all(Array.from({ length: MAKER_COMMENT_CONCURRENCY }, worker));
   return { counts, stopped };
 }

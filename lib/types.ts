@@ -57,6 +57,7 @@ export interface ScoredLaunch {
   commentsCount: number;
   createdAt: string;
   makerComments: number | null; // null = not counted
+  makerCommentsStale: boolean; // count comes from a saved copy older than its 6-hour life (shown as CACHED)
   votesHidden: boolean;
   daysSinceLaunch: number;
   urgency: Urgency;
@@ -88,7 +89,7 @@ export interface ScoutResponse {
   tooEarly: ScoredLaunch[];
   moreLaunches: ScoredLaunch[];
   warnings: string[];
-  counted: { n: number; of: number };
+  counted: { n: number; of: number; stale: number };
   ai: { available: boolean; sentToGemini: number; reusedSaved: number; model: string };
   refresh: { allowedNow: boolean; nextAvailableAt: string | null; applied: boolean };
   newTagging: boolean; // true when firstSeenAt values are usable
