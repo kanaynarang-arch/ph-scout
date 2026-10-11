@@ -57,6 +57,30 @@ function Score({ value, animate }: { value: number; animate: boolean }) {
   return <>{shown.toFixed(1)}</>;
 }
 
+/** A monogram tile: first letter on a muted tint derived from the name (no images, nothing fetched). */
+function Tile({ name }: { name: string }) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  const letter = (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
+  return <span className="tile" aria-hidden="true" style={{ "--h": h } as React.CSSProperties}>{letter}</span>;
+}
+
+/** Score ring: the arc is the score out of 100. */
+function Ring({ value, provisional, animate }: { value: number; provisional: boolean; animate: boolean }) {
+  const r = 24;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div className={`ring${provisional ? " prov" : ""}`}>
+      <svg viewBox="0 0 60 60" aria-hidden="true">
+        <circle className="trk" cx="30" cy="30" r={r} />
+        <circle className={`prg${animate ? " go" : ""}`} cx="30" cy="30" r={r} strokeDasharray={`${(c * pct) / 100} ${c}`} transform="rotate(-90 30 30)" />
+      </svg>
+      <span className="score"><Score value={value} animate={animate} /></span>
+    </div>
+  );
+}
+
 function Founder({ r }: { r: ScoredLaunch }) {
   const { names, hiddenCount, hunter } = r.founders;
   if (names.length) return <>{names.join(", ")}{hiddenCount > 0 ? ` (+${hiddenCount} hidden)` : ""}</>;
@@ -105,6 +129,8 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
     <article className={cls.join(" ")} style={index !== undefined && index < 10 ? ({ "--i": index } as React.CSSProperties) : undefined}>
       <div className="c-rank">{rank !== undefined && <span className="rank">{rank}</span>}</div>
       <div className="c-prod">
+        <Tile name={r.name} />
+        <div className="pr-text">
         <div className="titleline">
           <a className="name" href={r.url} target="_blank" rel="noreferrer">{r.name}</a>
           {showNew && <span className="pill p-new">New since your last visit</span>}
@@ -114,6 +140,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
         </div>
         <div className="founder">Founder: <Founder r={r} /></div>
         <p className="desc">{r.ai.oneLiner}</p>
+        </div>
       </div>
       <div className="c-angle">
         {aiShown ? (
@@ -129,12 +156,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
         <span className="mi"><IconDay /><b>{r.daysSinceLaunch}</b><span className="lbl">Days since launch</span></span>
       </div>
       <div className="c-score">
-        {r.votesHidden ? <div className="hidden">votes hidden</div> : (
-          <>
-            <div className="score"><Score value={r.score} animate={index !== undefined && index < 10} /></div>
-            <div className={`bar3${r.provisional ? " prov" : ""}`}><i style={{ width: `${Math.max(0, Math.min(100, r.score))}%` }} /></div>
-          </>
-        )}
+        {r.votesHidden ? <div className="hidden">votes hidden</div> : <Ring value={r.score} provisional={r.provisional} animate={index !== undefined && index < 10} />}
       </div>
       <button className="c-toggle" aria-expanded={open} aria-controls={detailId} aria-label={`${open ? "Hide" : "Show"} details for ${r.name}`} onClick={() => setOpen(!open)}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
@@ -287,13 +309,14 @@ export default function Page() {
     ? [
         <span key="r"><b>{data.ranked.length}</b> ranked</span>,
         <span key="s"><b>{data.counted.of}</b> launches scanned</span>,
-        <span key="m">maker comments counted for <b>{data.counted.n} of {data.counted.of}</b></span>,
+        <span key="m">maker comments counted for <b>{data.counted.n} of {data.counted.of}</b><span className="meter" aria-hidden="true"><i style={{ width: `${data.counted.of ? Math.round((data.counted.n / data.counted.of) * 100) : 0}%` }} /></span></span>,
         <span key="p"><b>{provisionalRows}</b> provisional</span>,
       ]
     : [];
 
   return (
     <>
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffb36b" /><stop offset="1" stopColor="#ff6a4d" /></linearGradient></defs></svg>
       <div className="topbar">
         <div className="topbar-in">
           <div className="brand"><span className="mark" aria-hidden="true" />ProductHunt <span className="dim">Partnership Scout</span></div>
@@ -312,12 +335,22 @@ export default function Page() {
       <main>
         {showHero && (
           <section className="hero">
+            <div className="hero-copy">
             <div className="micro">Partnerships · last 7 days on Product Hunt</div>
             <h1>Find the launches worth a conversation.</h1>
             <p className="sub">Launches from the last 7 days in project management, HR tech, developer productivity and team communication, ranked by upvotes and maker comments. It never contacts founders or sends outreach.</p>
             <div className="hero-actions">
               <button className="primary big" onClick={() => run(false)}>Generate</button>
               <span className="hint">Takes up to a minute the first time.</span>
+            </div>
+            </div>
+            <div className="frame" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className={`fr-row fr-${i}`}>
+                  <span className="fr-tile" /><span className="fr-lines"><i /><i /></span>
+                  <svg viewBox="0 0 60 60"><circle className="trk" cx="30" cy="30" r="24" /><circle className="prg" cx="30" cy="30" r="24" strokeDasharray={`${[132, 104, 78][i]} 151`} transform="rotate(-90 30 30)" /></svg>
+                </div>
+              ))}
             </div>
             <ol className="steps">
               <li><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
