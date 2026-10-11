@@ -1,4 +1,4 @@
-import type { CategoryId } from "./categories";
+import type { CategoryId, ExtraCategoryId } from "./categories";
 
 export interface Maker {
   id: string;
@@ -101,6 +101,7 @@ export interface ScoutResponse {
   counted: { n: number; of: number; stale: number };
   ai: { available: boolean; sentToGemini: number; reusedSaved: number; model: string };
   refresh: { allowedNow: boolean; nextAvailableAt: string | null; applied: boolean };
+  extras?: ExtraCategoryId[]; // optional categories that were actually scanned in this run (empty = the four built-in only)
   newTagging: boolean; // true when firstSeenAt values are usable
   tookMs: number;
   notification?: Notification;

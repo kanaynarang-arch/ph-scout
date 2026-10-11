@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { PROFILE } from "../config/profile";
 import { geminiModel } from "./gemini";
+import { isBrowserSameOrigin } from "./origin";
 import type { Launch } from "./types";
 
 // "Draft message": Gemini Flash writes a short outbound message that Kavya reviews, edits and sends HERSELF.
@@ -87,19 +88,7 @@ export function sanitizeDraft(raw: unknown): Draft | null {
   return { subject, body };
 }
 
-/** Only a real browser on this site may ask for a draft (same rule as the copy to Kavya). */
-export function isBrowserSameOrigin(headers: Headers): boolean {
-  const site = headers.get("sec-fetch-site");
-  if (site) return site === "same-origin";
-  const origin = headers.get("origin");
-  const host = headers.get("host");
-  if (!origin || !host) return false;
-  try {
-    return new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
+export { isBrowserSameOrigin } from "./origin";
 
 export interface DraftDeps {
   lookup: (id: string) => Promise<DraftSource | null>;

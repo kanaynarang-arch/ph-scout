@@ -1,8 +1,5 @@
 import { potentialOrder } from "./score";
-import {
-  CATEGORIES,
-  categoriesForSlugs,
-} from "./categories";
+import { CATEGORIES, categoriesForSlugs, type Category } from "./categories";
 import {
   MAKER_COMMENT_CONCURRENCY,
   MAKER_COMMENT_MAX_PAGES,
@@ -125,13 +122,13 @@ function toLaunch(p: RawPost, slug: string): Launch {
  * upvotes and total comments (potentialOf), so a launch with fewer votes but a very active comment thread is not
  * cut just because it sits lower by votes alone.
  */
-export async function fetchLaunches(now: Date, rate: RateState): Promise<Launch[]> {
+export async function fetchLaunches(now: Date, rate: RateState, categories: Category[] = CATEGORIES): Promise<Launch[]> {
   const since = new Date(now.getTime() - WINDOW_DAYS * 86_400_000).toISOString();
   const byId = new Map<string, Launch>();
   const perCategory = new Map<string, Set<string>>();
 
   await Promise.all(
-    CATEGORIES.map(async (cat) => {
+    categories.map(async (cat) => {
       const ids = new Set<string>();
       perCategory.set(cat.id, ids);
       await Promise.all(

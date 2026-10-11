@@ -1,4 +1,4 @@
-import { categoriesForSlugs } from "./categories";
+import { categoriesForSlugs, type Category } from "./categories";
 import {
   URGENCY_HOT_MAX_DAYS,
   URGENCY_WEEK_MAX_DAYS,
@@ -134,8 +134,8 @@ export function sortTooEarly<T extends { makerComments: number | null; commentsC
 }
 
 // ---- code-derived tags ----
-export function categoriesOf(l: Pick<Launch, "topics" | "viaSlugs">) {
-  return categoriesForSlugs([...l.topics.map((t) => t.slug), ...l.viaSlugs]);
+export function categoriesOf(l: Pick<Launch, "topics" | "viaSlugs">, scanned?: Category[]) {
+  return categoriesForSlugs([...l.topics.map((t) => t.slug), ...l.viaSlugs], scanned);
 }
 
 export function founderInfo(l: Pick<Launch, "makers" | "hunter">) {

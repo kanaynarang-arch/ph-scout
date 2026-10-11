@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { PROFILE } from "../config/profile";
+import { scannedCategories, type Category, type ExtraCategoryId } from "./categories";
 import { categoriesOf, daysSinceLaunch, founderInfo, scoreAll, selectToCount, sortByScore, sortTooEarly, urgencyFor, votesHidden } from "./score";
 import {
   GEMINI_HIDDEN_EXTRA,
@@ -41,6 +42,7 @@ const realDeps: Deps = { fetchLaunches, countBatch: countMakerCommentsBatch, gen
 
 export interface RunOptions {
   refresh?: boolean; // "Refresh now" button
+  extras?: ExtraCategoryId[]; // optional extra categories to scan on top of the four built-in ones (already validated)
   now?: Date;
   deps?: Partial<Deps>;
 }
@@ -65,6 +67,7 @@ function buildRow(
   withAi: boolean,
   firstSeenAt: string | null,
   makerCommentsStale: boolean,
+  scanned: Category[],
 ): ScoredLaunch {
   const days = daysSinceLaunch(l.createdAt, asOf);
   let aiBlock: ScoredLaunch["ai"];
@@ -96,7 +99,7 @@ function buildRow(
     votesHidden: hidden,
     daysSinceLaunch: days,
     urgency: urgencyFor(days),
-    categories: categoriesOf(l),
+    categories: categoriesOf(l, scanned),
     founders: founderInfo(l),
     score: scored?.score ?? 0,
     provisional: scored?.provisional ?? false,
@@ -151,6 +154,10 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
   }
 
   // ---- 1. Launch list: Neon (1 hour) -> live Product Hunt -> stale copy -> bundled snapshot ----
+  // The default (four built-in categories) keeps its own saved list; each extra combination gets a separate saved list.
+  const extras = opts.extras ?? [];
+  let scanned = scannedCategories(extras);
+  const listKey = extras.length ? key("launches", "x", extras.join("+")) : key("launches");
   let launches: Launch[];
   let source: Source;
   let fetchedAt: string;
@@ -158,12 +165,12 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
   const snapshot = loadSnapshot();
   try {
     const r = await getOrRefresh<Launch[]>({
-      key: key("launches"),
+      key: listKey,
       ttlMs: TTL_LIST_MS,
       validate: isLaunchArray,
-      fetcher: () => deps.fetchLaunches(now, rate),
+      fetcher: () => deps.fetchLaunches(now, rate, scanned),
       force,
-      lockName: "launches",
+      lockName: extras.length ? `launches:${extras.join("+")}` : "launches",
     });
     launches = r.value;
     fetchedAt = r.fetchedAt;
@@ -176,7 +183,9 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
     fetchedAt = snapshot.fetchedAt;
     listStatus = "sample";
     source = "SAMPLE";
+    scanned = scannedCategories([]);
     warnings.push(`Live Product Hunt data is unavailable (${phReason(e)}). Showing the bundled SAMPLE from ${snapshot.fetchedAt.slice(0, 10)}.`);
+    if (extras.length) warnings.push("The extra categories need live data, so only the four main categories are shown.");
   }
   // LIVE data is measured against now; CACHED/SAMPLE against the time they were fetched.
   const asOf = source === "LIVE" ? now : new Date(fetchedAt);
@@ -288,7 +297,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
   // ---- 5. Build rows ----
   const seenAt = (id: string) => seen?.get(id) ?? null;
   const rowOf = (l: Launch, withAi: boolean) =>
-    buildRow(l, mc(l), asOf, hiddenSet.has(l.id), hiddenSet.has(l.id) ? null : scoreById.get(l.id)!, results.get(l.id), withAi, seenAt(l.id), staleCounts.has(l.id));
+    buildRow(l, mc(l), asOf, hiddenSet.has(l.id), hiddenSet.has(l.id) ? null : scoreById.get(l.id)!, results.get(l.id), withAi, seenAt(l.id), staleCounts.has(l.id), scanned);
   const topSet = new Set(targets.map((l) => l.id));
   const ranked = topRanked.map((l) => rowOf(l, true));
   const moreLaunches = moreRanked.map((l) => rowOf(l, false));
@@ -306,6 +315,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResponse> {
     counted: { n: visible.filter((l) => counts.has(l.id)).length, of: visible.length, stale: visible.filter((l) => staleCounts.has(l.id)).length },
     ai: { available: aiAvailable, sentToGemini: sent, reusedSaved: reused, model: geminiModel() },
     refresh: { allowedNow: nextAvailableAt === null || Date.parse(nextAvailableAt) <= Date.now(), nextAvailableAt, applied: refreshApplied },
+    extras: extras.filter((id) => scanned.some((c) => c.id === id)),
     newTagging: seen !== null,
     tookMs: Date.now() - t0,
   };

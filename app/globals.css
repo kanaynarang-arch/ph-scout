@@ -342,6 +342,28 @@ h2 .count { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--t
 .lrow.competitor .ring .prg { stroke: rgba(255, 255, 255, 0.45); filter: none; }
 .lrow.competitor .tile { filter: saturate(0.3) brightness(0.9); }
 
+/* ---- optional categories ---- */
+.extras { display: block; }
+.extras .hint { margin: 0 0 10px; font-size: 12px; line-height: 17px; }
+.extras .nav-h { padding-top: 6px; }
+.extra-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.xchip { height: 32px; padding: 0 12px; font-size: 13px; border-radius: 999px; border: 1px dashed var(--line-hi); background: transparent; color: var(--t2); }
+.xchip.on { border-style: solid; border-color: rgba(255, 176, 46, 0.6); background: rgba(255, 176, 46, 0.12); color: var(--amber-t); font-weight: 600; }
+.xchip:hover:not(:disabled) { border-color: rgba(255, 176, 46, 0.55); color: var(--t1); }
+.extras .pending { margin: 10px 0 0; color: var(--amber-t); }
+.extras-box { margin-top: 18px; max-width: 600px; }
+.extras-box > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--t2); height: 32px; }
+.extras-box > summary::-webkit-details-marker { display: none; }
+.extras-box > summary::before { content: "+"; display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border: 1px dashed var(--line-hi); border-radius: 50%; font-size: 13px; line-height: 1; }
+.extras-box[open] > summary::before { content: "–"; }
+.extras-box > summary:hover { color: var(--t1); }
+.extras-box .extras { padding: 6px 0 0; }
+.extras-box .nav-h { padding-left: 0; }
+.side .extras { padding: 6px 10px 0; }
+.side .extras .nav-h { padding-left: 0; }
+.strip-chip.optional { background: transparent; border: 1px dashed rgba(255, 176, 46, 0.5); color: var(--amber-t); }
+.m-filters .extras-box { margin-top: 0; }
+
 /* ---- draft message ---- */
 button.small.accent { border-color: rgba(255, 176, 46, 0.6); color: var(--amber-t); }
 button.small.accent:hover:not(:disabled) { background: rgba(255, 176, 46, 0.12); border-color: var(--amber); }

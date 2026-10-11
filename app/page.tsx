@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { CATEGORIES, categoryLabel, type CategoryId } from "@/lib/categories";
+import { CATEGORIES, EXTRA_CATEGORIES, MAX_EXTRAS, categoryLabel, parseExtras, type CategoryId, type ExtraCategoryId } from "@/lib/categories";
 import { rowsLabel, toCsv, type CsvRow } from "@/lib/csv";
 import type { ScoredLaunch, ScoutResponse } from "@/lib/types";
 
@@ -228,7 +228,8 @@ function Row({ r, rank, showNew, aiShown, index, onCopied }: { r: ScoredLaunch; 
   );
 }
 
-const CAT_COLORS = ["#3ee8c8", "#ffb02e", "#a78bfa", "#d4f55a"];
+const CAT_COLORS = ["#3ee8c8", "#ffb02e", "#a78bfa", "#d4f55a", "#f4a9d0", "#d6b36a"];
+const EXTRAS_KEY = "ph-scout:extras";
 
 /** Donut of how the ranked launches split across the four categories (a launch can carry more than one tag). */
 function Donut({ parts }: { parts: { label: string; n: number; color: string }[] }) {
@@ -352,11 +353,23 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [cats, setCats] = useState<CategoryId[]>([]); // selected categories; empty means all
   const allCats = cats.length === 0;
-  const toggleCat = (id: CategoryId) =>
-    setCats((cur) => {
-      const next = cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id];
-      return next.length === CATEGORIES.length ? [] : next; // every category selected is the same as all
+  const [extras, setExtras] = useState<ExtraCategoryId[]>([]); // optional categories to scan on the next Generate (off by default)
+  const [extraNote, setExtraNote] = useState<string | null>(null);
+  useEffect(() => {
+    try { setExtras(parseExtras(JSON.parse(localStorage.getItem(EXTRAS_KEY) ?? "[]"))); } catch { /* storage blocked or bad value */ }
+  }, []);
+  const toggleExtra = (id: ExtraCategoryId) => {
+    setExtraNote(null);
+    setExtras((cur) => {
+      if (!cur.includes(id) && cur.length >= MAX_EXTRAS) {
+        setExtraNote(`Up to ${MAX_EXTRAS} extra categories at a time, so a run stays fast and within Product Hunt's limits.`);
+        return cur;
+      }
+      const next = parseExtras(cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id]);
+      try { localStorage.setItem(EXTRAS_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+      return next;
     });
+  };
   const [fitOnly, setFitOnly] = useState(false);
   const [prevVisit, setPrevVisit] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -375,7 +388,7 @@ export default function Page() {
     setLoading(refresh ? "refresh" : "generate");
     setError(null);
     try {
-      const res = await fetch("/api/scout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refresh }) });
+      const res = await fetch("/api/scout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refresh, extras }) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Request failed");
       setData(json as ScoutResponse);
@@ -463,6 +476,19 @@ export default function Page() {
   const exportCount = data ? ranked.length + tooEarly.length + (moreOpen ? more.length : 0) : 0;
 
   const catCount = (id: CategoryId) => (data ? data.ranked.filter((r) => r.categories.includes(id)).length : 0);
+  const availableCats = [...CATEGORIES, ...EXTRA_CATEGORIES.filter((c) => data?.extras?.includes(c.id as ExtraCategoryId))];
+  const scannedExtras = (data?.extras ?? []) as ExtraCategoryId[];
+  const extrasPending = Boolean(data) && [...extras].sort().join() !== [...scannedExtras].sort().join();
+  const toggleCat = (id: CategoryId) =>
+    setCats((cur) => {
+      const next = cur.includes(id) ? cur.filter((c) => c !== id) : [...cur, id];
+      return next.length === availableCats.length ? [] : next; // every available category selected is the same as all
+    });
+  useEffect(() => {
+    // a category filter can only stay selected while that category is part of the current results
+    setCats((cur) => (cur.every((id) => availableCats.some((c) => c.id === id)) ? cur : cur.filter((id) => availableCats.some((c) => c.id === id))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const showHero = !data && !loading;
   const hour = new Date().getHours();
@@ -472,7 +498,7 @@ export default function Page() {
   const hotRows = data ? data.ranked.filter((r) => r.urgency === "hot") : [];
   const coveragePct = data && data.counted.of ? Math.round((data.counted.n / data.counted.of) * 100) : 0;
   const top = data?.ranked[0];
-  const catParts = CATEGORIES.map((c, i) => ({ label: c.label, n: catCount(c.id), color: CAT_COLORS[i % CAT_COLORS.length] }));
+  const catParts = availableCats.map((c, i) => ({ label: c.label, n: catCount(c.id), color: CAT_COLORS[i % CAT_COLORS.length] }));
   const busy = loading !== null;
 
   const fitSwitch = (
@@ -480,6 +506,22 @@ export default function Page() {
       <input type="checkbox" checked={fitOnly} disabled={!data?.ai.available} onChange={(e) => setFitOnly(e.target.checked)} />
       Strong and possible fit only
     </label>
+  );
+  const extraPicker = (
+    <div className="extras" role="group" aria-label="Optional categories to scan">
+      <p className="micro nav-h">More categories · optional</p>
+      <p className="hint">Not scanned by default. Pick up to {MAX_EXTRAS}; they are added the next time you click Generate.</p>
+      <div className="extra-list">
+        {EXTRA_CATEGORIES.map((c) => {
+          const on = extras.includes(c.id as ExtraCategoryId);
+          return (
+            <button key={c.id} className={`xchip${on ? " on" : ""}`} aria-pressed={on} onClick={() => toggleExtra(c.id as ExtraCategoryId)}>{on ? "✓" : "+"} {c.label}</button>
+          );
+        })}
+      </div>
+      {extraNote && <p className="hint pending" role="status">{extraNote}</p>}
+      {extrasPending && !extraNote && <p className="hint pending" role="status">Click Generate to {extras.length ? "scan your choice" : "go back to the four main categories"}.</p>}
+    </div>
   );
   const statusPill = data ? (
     <span className={`pill p-${data.source.toLowerCase()}`}>{data.source === "LIVE" && <span className="dot" aria-hidden="true" />}{data.source}<span className="when"> · {data.source === "SAMPLE" ? "bundled sample data from " : "fetched "}{fmtTime(data.fetchedAt)}</span></span>
@@ -504,6 +546,7 @@ export default function Page() {
                   <button className="primary" onClick={() => run(false)}>Generate</button>
                 </div>
                 <p className="hint">Takes up to a minute the first time.</p>
+                <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
               </div>
               <div className="net" aria-hidden="true">
                 <svg viewBox="0 0 520 440">
@@ -519,7 +562,7 @@ export default function Page() {
                 </svg>
                 <div className="net-card"><span className="fr-k" /><span className="fr-big" /><span className="fr-dots">{Array.from({ length: 22 }, (_, i) => <i key={i} style={{ height: `${20 + ((i * 37) % 70)}%` }} />)}</span></div>
               </div>
-              <div className="strip" aria-label="Categories scanned"><span className="micro">Scans</span>{CATEGORIES.map((c) => <span key={c.id} className="strip-chip">{c.label}</span>)}</div>
+              <div className="strip" aria-label="Categories scanned"><span className="micro">Scans</span>{CATEGORIES.map((c) => <span key={c.id} className="strip-chip">{c.label}</span>)}{EXTRA_CATEGORIES.filter((c) => extras.includes(c.id as ExtraCategoryId)).map((c) => <span key={c.id} className="strip-chip optional">{c.label} · optional</span>)}</div>
               <ol className="steps" id="how">
                 <li className="t-amber"><span className="ico ico-amber" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><span className="micro">01 · Scan</span><p>Product Hunt launches from the last 7 days across four categories, fetched live.</p></li>
                 <li className="t-teal"><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 16V9M10 16V4M16 16v-5" /></svg></span><span className="micro">02 · Rank</span><p>Half upvotes, half maker comments, each against the week&apos;s best. Computed in code.</p></li>
@@ -548,11 +591,12 @@ export default function Page() {
                 {data.moreLaunches.length > 0 && <a className="nav" href="#more" onClick={() => setMoreOpen(true)}>More launches <span className="n">{data.moreLaunches.length}</span></a>}
                 <p className="micro nav-h">Categories</p>
                 <button className={`nav${allCats ? " on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All categories <span className="n">{data.ranked.length}</span></button>
-                {CATEGORIES.map((c) => (
+                {availableCats.map((c) => (
                   <button key={c.id} className={`nav${cats.includes(c.id) ? " on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}><span className="cb" aria-hidden="true" />{c.label} <span className="n">{catCount(c.id)}</span></button>
                 ))}
                 <p className="micro nav-h">View</p>
                 <div className="side-switch">{fitSwitch}</div>
+                {extraPicker}
               </nav>
             )}
             {data && <div className="side-foot">{statusPill}{notice && <p className="notice" role="status">{notice}</p>}</div>}
@@ -566,7 +610,7 @@ export default function Page() {
             </header>
 
             <section className="qas" aria-label="Actions">
-              <button className="qa qa-main" onClick={() => run(false)} disabled={busy}><span>{loading === "generate" ? "Generating…" : "Generate"}<small>Build a fresh list</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M10 3l1.8 4.2L16 9l-4.2 1.8L10 15l-1.8-4.2L4 9l4.2-1.8z" /></svg></i></button>
+              <button className="qa qa-main" onClick={() => run(false)} disabled={busy}><span>{loading === "generate" ? "Generating…" : "Generate"}<small>{extras.length ? `Four main + ${extras.length} optional` : "Build a fresh list"}</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M10 3l1.8 4.2L16 9l-4.2 1.8L10 15l-1.8-4.2L4 9l4.2-1.8z" /></svg></i></button>
               <button className="qa" onClick={() => run(true)} disabled={busy || !data || refreshWaitMin > 0} title="Fetch the launch list again (once every 5 minutes)"><span>{refreshLabel}<small>Once every 5 minutes</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-2-4.5M16 3v3.500h-3.500" /></svg></i></button>
               <button className="qa" onClick={copyCsv} disabled={exportCount === 0}><span>Copy as CSV<small>{rowsLabel(exportCount)} visible</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M7 7h9v9H7zM4 13V4h9" /></svg></i></button>
               <button className="qa" onClick={downloadCsv} disabled={exportCount === 0}><span>Download CSV<small>{rowsLabel(exportCount)} visible</small></span><i className="qa-ico"><svg viewBox="0 0 20 20"><path d="M10 3v9m-3.500-3.500L10 12l3.500-3.500M4 16h12" /></svg></i></button>
@@ -642,11 +686,12 @@ export default function Page() {
                 <div className="m-filters">
                   <div className="seg" role="group" aria-label="Categories, pick one or more">
                     <button className={`chip ${allCats ? "on" : ""}`} aria-pressed={allCats} onClick={() => setCats([])}>All <span className="n">{data.ranked.length}</span></button>
-                    {CATEGORIES.map((c) => (
+                    {availableCats.map((c) => (
                       <button key={c.id} className={`chip ${cats.includes(c.id) ? "on" : ""}`} aria-pressed={cats.includes(c.id)} onClick={() => toggleCat(c.id)}>{c.label} <span className="n">{catCount(c.id)}</span></button>
                     ))}
                   </div>
                   {fitSwitch}
+                  <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
                   {notice && <p className="notice" role="status">{notice}</p>}
                 </div>
 
