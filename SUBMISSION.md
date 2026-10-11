@@ -2,7 +2,7 @@
 
 - **Public URL:** https://ph-scout.vercel.app
 - **GitHub repo:** https://github.com/kanaynarang-arch/ph-scout
-- **Components Map:** `docs/components-map.png` (also shown in the README; the earlier version is kept in the project folder as `PS4 Components Map (submitted v1).png`)
+- **Components Map:** `docs/components-map.png` (includes the optional Draft message flow, steps D1 to D3) (also shown in the README; the earlier version is kept in the project folder as `PS4 Components Map (submitted v1).png`)
 
 ## 30-second demo path
 
