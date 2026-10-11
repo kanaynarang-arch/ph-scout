@@ -12,23 +12,6 @@
 4. Expand **How this was scored** (upvotes + maker comments only) and try the category chips and the fit switch (they only hide rows).
 5. Scroll to the footer: the tool **never contacts founders, never looks up emails and never sends outreach**. When Kavya clicks Generate it also sends a copy of the list to her own Telegram and email. Kavya does all outreach herself. (Generate also shows a quiet line: "Copy being sent to Kavya's Telegram and email", limited to one per 5 minutes.)
 
-## Automation Brief
-
-**Pain.** Kavya leads partnerships at a B2B SaaS company that helps remote teams run async standups. Her outreach only works in the first 7 days after a launch, while founders are excited and looking for distribution partners. She checks Product Hunt by hand every morning, which takes 30 to 40 minutes, and still misses launches that arrive after she looked or gain traction later in the day. Nothing records why a product was shortlisted.
-
-**User.** Kavya, the only user and the only person who contacts founders.
-
-**Outcome (targets).** A ranked list for her four categories in about a minute per click (project management, HR tech, developer productivity, team communication). Review time down from 30 to 40 minutes to under 5. Every launch in the 7-day window is covered, so none is missed because of timing.
-
-**Journey today.**
-1. Kavya opens Product Hunt each morning and scrolls the day's launches.
-2. She reads descriptions and checks upvote counts.
-3. She guesses which teams are responsive.
-4. She shortlists from memory or a note.
-5. She works out, product by product, how her tool could complement theirs.
-6. She finds the founder and writes the outreach herself.
-7. Launches that appear after she looked, or gain traction later, are missed. By day 7 the window has closed.
-
 ## The Nine Checks
 
 | # | Check | Evidence from the case | Result |
