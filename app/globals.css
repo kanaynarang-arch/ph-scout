@@ -325,7 +325,7 @@ h2 .count { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--t
 .quote.unv { border-left-color: rgba(255, 176, 46, 0.7); }
 .quote.unv .q-lbl { color: var(--amber-t); }
 .d-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-.d-actions .note { color: var(--t3); font-size: 12px; flex-basis: 100%; }
+.d-actions .note, .findc .note { color: var(--t3); font-size: 12px; flex-basis: 100%; }
 .fitline { margin: 0; color: var(--t2); font-size: 13px; line-height: 20px; }
 .urgrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 12px; font-size: 13px; color: var(--t2); }
 .urg { display: inline-flex; align-items: center; gap: 7px; }
@@ -347,6 +347,8 @@ h2 .count { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--t
 .plink { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.25); text-underline-offset: 3px; }
 .plink:hover { color: var(--t1); text-decoration-color: var(--mint); }
 .btn-link { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; font-size: 13px; border-radius: 999px; border: 1px solid var(--line-hi); color: var(--t1); text-decoration: none; }
+.findc { margin-top: 14px; display: grid; gap: 8px; }
+.findc .d-actions { margin-top: 0; }
 .btn-link:hover { background: var(--fill-2); border-color: rgba(255, 255, 255, 0.34); }
 
 /* ---- insights panel (collapsed by default so the list comes first) ---- */

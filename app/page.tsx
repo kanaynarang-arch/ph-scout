@@ -108,6 +108,25 @@ function Founder({ r }: { r: ScoredLaunch }) {
   return <>Not available — <a href={r.url} target="_blank" rel="noreferrer">see the launch page</a></>;
 }
 
+function FindContact({ r }: { r: ScoredLaunch }) {
+  // Links only: each one opens a search page on click. The tool looks nothing up and stores nothing.
+  const enc = encodeURIComponent;
+  const people = r.founders.names.slice(0, 3);
+  const links = [
+    ...people.map((n) => ({ label: `${n} on LinkedIn`, url: `https://www.linkedin.com/search/results/people/?keywords=${enc(`${n} ${r.name}`)}` })),
+    { label: `Search the web for ${r.name} contact`, url: `https://www.google.com/search?q=${enc(`${r.name} founder contact`)}` },
+  ];
+  return (
+    <div className="findc">
+      <div className="micro">Find contact yourself</div>
+      <div className="d-actions">
+        {links.map((l) => <a key={l.url} className="btn-link" href={l.url} target="_blank" rel="noreferrer noopener">{l.label} ↗</a>)}
+      </div>
+      <span className="note">These links open a search for you to run. The tool looks up no contact details and stores none.</span>
+    </div>
+  );
+}
+
 function HowScored({ r }: { r: ScoredLaunch }) {
   const p = r.parts;
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
@@ -227,6 +246,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacte
                   <button className={`small${contacted ? " on-contacted" : ""}`} onClick={onContacted} aria-pressed={contacted}>{contacted ? "✓ Contacted (undo)" : "Mark as contacted"}</button>
                   <span className="note">The angle is a starting point for you, not a message. "Contacted" is only a note kept in this browser: the tool never contacts anyone.</span>
                 </div>
+                <FindContact r={r} />
                 {drState === "error" && <p className="draft-err" role="alert">{drErr}</p>}
                 {dr && (
                   <div className="draft">
