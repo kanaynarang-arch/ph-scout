@@ -38,4 +38,4 @@ export const DB_TIMEOUT_MS = 2500;
 export const COUNT_PHASE_DEADLINE_MS = 24_000; // stop counting maker comments after this
 export const TOTAL_DEADLINE_MS = 52_000; // return what is ready after this
 
-export const CACHE_NS = "v1";
+export const CACHE_NS = process.env.CACHE_NS || "v1"; // override only for isolated tests
