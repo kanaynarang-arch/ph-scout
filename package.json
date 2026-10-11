@@ -1,0 +1,29 @@
+{
+  "name": "ph-scout",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "db:apply": "node scripts/apply-schema.mjs",
+    "db:smoke": "node scripts/db-smoke.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^2.28.0",
+    "@neondatabase/serverless": "^1.2.0",
+    "next": "^16.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  },
+  "type": "module"
+}
