@@ -14,6 +14,12 @@ import type { Launch } from "./types";
 
 const URL = "https://api.producthunt.com/v2/api/graphql";
 
+/** The launch link, without the tracking query. Anything that is not a Product Hunt https link falls back to the site home, so a bad value can never become a javascript: or other link. */
+export function safeLaunchUrl(u: unknown): string {
+  const clean = String(u ?? "").split("?")[0];
+  return /^https:\/\/www\.producthunt\.com\/[^\s<>"']*$/.test(clean) ? clean : "https://www.producthunt.com/";
+}
+
 export class PhError extends Error {
   constructor(
     message: string,
@@ -105,7 +111,7 @@ function toLaunch(p: RawPost, slug: string): Launch {
     description: p.description ?? "",
     slug: p.slug,
     // Keep the launch link but drop the tracking query string.
-    url: String(p.url).split("?")[0],
+    url: safeLaunchUrl(p.url),
     votesCount: p.votesCount ?? 0,
     commentsCount: p.commentsCount ?? 0,
     createdAt: p.createdAt,

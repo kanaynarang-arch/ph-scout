@@ -32,9 +32,11 @@ export function notifyConfig(env: Record<string, string | undefined>): NotifyCon
 
 // ---------------------------------------------------------------- is this a real Generate?
 /**
- * True only for the Generate button: not Refresh now, and the request must come from a browser page of this
- * app (Sec-Fetch-Site: same-origin, or an Origin that matches the Host). Scripts, curl and other sites do not
- * send these, so they can never trigger a message. A client-supplied "please send" field does not exist.
+ * True only for the Generate button: not Refresh now, and the request must carry the headers a browser page of this
+ * app sends (Sec-Fetch-Site: same-origin, or an Origin that matches the Host). Other websites and honest scripts do
+ * not send them. This is a convenience boundary, not authentication: a client that deliberately sets the header can
+ * pass, which is why the limit of one copy per 5 minutes, to Kavya only, is the real protection. A client-supplied
+ * "please send" field does not exist.
  */
 export function isRealGenerate(headers: Headers, refresh: boolean): boolean {
   if (refresh) return false;

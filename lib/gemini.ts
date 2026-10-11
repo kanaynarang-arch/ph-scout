@@ -109,7 +109,7 @@ export interface GeminiRun {
 }
 
 /**
- * One batched call for launches without a saved result (split into parallel batches of 30 if larger).
+ * One batched call for launches without a saved result (split into parallel batches of GEMINI_BATCH_SIZE (15) if larger).
  * Launches whose quote fails the check are retried once; then kept and tagged unverified.
  */
 export async function generateAngles(launches: Launch[], deadlineAt: number, call: CallFn = callGemini): Promise<GeminiRun> {

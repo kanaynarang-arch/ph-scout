@@ -89,7 +89,7 @@ function Founder({ r }: { r: ScoredLaunch }) {
       </>
     );
   }
-  if (hunter) return <>{hunter} <span className="meta">(Posted by (hunter, may not be the founder))</span></>;
+  if (hunter) return <>{hunter} <span className="meta">(hunter, may not be the founder)</span></>;
   return <>Not available — <a href={r.url} target="_blank" rel="noreferrer">see the launch page</a></>;
 }
 
