@@ -10,6 +10,7 @@ import {
   maybeNotify,
   memoryLimiter,
   notifyConfig,
+  parseChannels,
   safeLink,
   sendEmail,
   sendTelegram,
@@ -474,5 +475,139 @@ describe("message content", () => {
     const n = await maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn });
     await h.settle();
     for (const secret of ["TESTTOKEN", "re_testkey", "kavya@example.com", "111:"]) expect(JSON.stringify(n)).not.toContain(secret);
+  });
+});
+
+// ---------------------------------------------------------------- 7. the page can switch channels off (never on)
+describe("channel toggle: Telegram and email, both on by default", () => {
+  const generate = (h: ReturnType<typeof harness>, wanted?: ("telegram" | "email")[]) =>
+    maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn, now: h.c.now, wanted });
+  const hosts = (h: ReturnType<typeof harness>) => h.f.calls.map((c) => new URL(c.url).host);
+
+  it("sends to both when no choice is made (the default)", async () => {
+    const h = harness();
+    expect((await generate(h)).channels).toEqual(["telegram", "email"]);
+    await h.settle();
+    expect(hosts(h)).toEqual(["api.telegram.org", "api.resend.com"]);
+  });
+  it("sends to both when the page leaves both on", async () => {
+    const h = harness();
+    await generate(h, ["telegram", "email"]);
+    await h.settle();
+    expect(hosts(h).sort()).toEqual(["api.resend.com", "api.telegram.org"]);
+  });
+  it("Telegram only: no email request is made", async () => {
+    const h = harness();
+    const n = await generate(h, ["telegram"]);
+    await h.settle();
+    expect(n).toEqual({ status: "sending", channels: ["telegram"] });
+    expect(hosts(h)).toEqual(["api.telegram.org"]);
+  });
+  it("email only: no Telegram request is made", async () => {
+    const h = harness();
+    const n = await generate(h, ["email"]);
+    await h.settle();
+    expect(n).toEqual({ status: "sending", channels: ["email"] });
+    expect(hosts(h)).toEqual(["api.resend.com"]);
+  });
+  it("both off: nothing is sent and the 5-minute slot is NOT used", async () => {
+    const h = harness();
+    const n = await generate(h, []);
+    await h.settle();
+    expect(n).toEqual({ status: "skipped", channels: [] });
+    expect(h.f.calls.length).toBe(0);
+    const next = await generate(h); // straight away, with both on: still allowed, because the slot was never claimed
+    await h.settle();
+    expect(next.status).toBe("sending");
+    expect(h.f.calls.length).toBe(2);
+  });
+  it("the cooldown still applies after a Telegram-only send, whatever channel is chosen next", async () => {
+    const h = harness();
+    await generate(h, ["telegram"]);
+    h.c.advance(60);
+    const n = await generate(h, ["email"]);
+    expect(n.status).toBe("cooldown");
+    expect(n.channels).toEqual(["email"]);
+    await h.settle();
+    expect(hosts(h)).toEqual(["api.telegram.org"]);
+  });
+  it("can never add a channel the server has not configured", async () => {
+    const h = harness({ env: { ...ENV, RESEND_API_KEY: undefined } }); // email not configured
+    const n = await generate(h, ["telegram", "email"]);
+    await h.settle();
+    expect(n.channels).toEqual(["telegram"]);
+    expect(hosts(h)).toEqual(["api.telegram.org"]);
+    const onlyEmailWanted = harness({ env: { ...ENV, RESEND_API_KEY: undefined } });
+    expect(await generate(onlyEmailWanted, ["email"])).toEqual({ status: "skipped", channels: [] });
+    expect(onlyEmailWanted.f.calls.length).toBe(0);
+  });
+  it("the kill switch still wins over any choice", async () => {
+    const h = harness({ env: { ...ENV, NOTIFICATIONS_ENABLED: "false" } });
+    expect((await generate(h, ["telegram", "email"])).status).toBe("off");
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("SAMPLE data and Refresh now still never send, whatever the choice", async () => {
+    const h = harness();
+    const sample = await maybeNotify({ generate: true, data: data({ source: "SAMPLE" }), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn, wanted: ["telegram", "email"] });
+    expect(sample.status).toBe("skipped_sample");
+    const refresh = await maybeNotify({ generate: false, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn, wanted: ["telegram", "email"] });
+    expect(refresh.status).toBe("skipped");
+    expect(h.f.calls.length).toBe(0);
+  });
+});
+
+describe("parseChannels", () => {
+  it("accepts only telegram and email, removes duplicates and keeps an explicit empty list", () => {
+    expect(parseChannels(["telegram", "email"])).toEqual(["telegram", "email"]);
+    expect(parseChannels(["email", "email"])).toEqual(["email"]);
+    expect(parseChannels([])).toEqual([]);
+  });
+  it("treats anything malformed as no choice (everything stays on)", () => {
+    for (const bad of [undefined, null, "telegram", 5, {}, ["sms"], ["telegram", "sms"], ["telegram", 1], [null], ["a", "b", "c", "d", "e"]]) {
+      expect(parseChannels(bad)).toBeUndefined();
+    }
+  });
+});
+
+describe("channel choice through the POST handler", () => {
+  const post = (body: unknown, headers: Record<string, string>) =>
+    new Request("https://ph-scout.vercel.app/api/scout", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+  const browser = { "sec-fetch-site": "same-origin", host: "ph-scout.vercel.app" };
+  const run = (h: ReturnType<typeof harness>, req: Request) => handleScout(req, { run: async () => data(), limiter: () => h.limiter, schedule: h.schedule, env: h.env, fetchFn: h.f.fn, now: h.c.now });
+
+  it("honours the choice from a browser request", async () => {
+    const h = harness();
+    const out = await run(h, post({ channels: ["telegram"] }, browser));
+    await h.settle();
+    expect(out.notification).toEqual({ status: "sending", channels: ["telegram"] });
+    expect(h.f.calls.map((c) => new URL(c.url).host)).toEqual(["api.telegram.org"]);
+  });
+  it("both off from a browser request sends nothing", async () => {
+    const h = harness();
+    const out = await run(h, post({ channels: [] }, browser));
+    await h.settle();
+    expect(out.notification).toEqual({ status: "skipped", channels: [] });
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("garbage in the field leaves the default (both) on", async () => {
+    const h = harness();
+    const out = await run(h, post({ channels: ["telegram", "sms", { to: "attacker@evil.example" }] }, browser));
+    await h.settle();
+    expect(out.notification.channels).toEqual(["telegram", "email"]);
+    expect(JSON.stringify(h.f.calls.map((c) => c.body))).not.toContain("attacker");
+  });
+  it("a request without browser headers never sends, so the field cannot make it send", async () => {
+    const h = harness();
+    const out = await run(h, post({ channels: ["telegram", "email"] }, {}));
+    await h.settle();
+    expect(out.notification.status).toBe("skipped");
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("the field is ignored for Refresh now (which never sends)", async () => {
+    const h = harness();
+    const out = await run(h, post({ refresh: true, channels: ["telegram", "email"] }, browser));
+    await h.settle();
+    expect(out.notification.status).toBe("skipped");
+    expect(h.f.calls.length).toBe(0);
   });
 });

@@ -13,7 +13,7 @@ import { CATEGORIES, categoryLabel } from "./categories";
 // Triggered only by a real Generate. The client supplies no text and no recipients.
 // Recipients and keys come only from server env vars and never leave this module.
 
-type Channel = "telegram" | "email";
+export type Channel = "telegram" | "email";
 
 // ---------------------------------------------------------------- config / kill switches
 export interface NotifyConfig {
@@ -28,6 +28,21 @@ export function notifyConfig(env: Record<string, string | undefined>): NotifyCon
   const email = env.RESEND_API_KEY && env.NOTIFY_EMAIL ? { apiKey: env.RESEND_API_KEY, to: env.NOTIFY_EMAIL } : null;
   const channels: Channel[] = [...(telegram ? (["telegram"] as const) : []), ...(email ? (["email"] as const) : [])];
   return { enabled: env.NOTIFICATIONS_ENABLED === "true" && channels.length > 0, telegram, email, channels };
+}
+
+/**
+ * The page can switch channels OFF for the next Generate. This reads that choice and only ever narrows what the server
+ * allows: valid values are "telegram" and "email"; anything malformed means "no choice made" (undefined, so every configured
+ * channel stays on); an empty list means the visitor switched both off. It can never add a channel, recipient or text.
+ */
+export function parseChannels(input: unknown): Channel[] | undefined {
+  if (!Array.isArray(input) || input.length > 4) return undefined;
+  const out: Channel[] = [];
+  for (const v of input) {
+    if (v !== "telegram" && v !== "email") return undefined;
+    if (!out.includes(v)) out.push(v);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- is this a real Generate?
@@ -239,6 +254,7 @@ export interface NotifyDeps {
   schedule: (task: () => Promise<void>) => void; // runs after the response is sent (Next's after())
   fetchFn?: FetchFn;
   now?: () => Date;
+  wanted?: Channel[]; // the visitor's channel choice from the page (see parseChannels); undefined = every configured channel
 }
 
 /**
@@ -253,10 +269,14 @@ export async function maybeNotify(d: NotifyDeps): Promise<Notification> {
     if (d.data.source === "SAMPLE") return { status: "skipped_sample", channels: cfg.channels };
     if (d.data.ranked.length === 0) return { status: "skipped", channels: cfg.channels };
 
+    // Only configured channels can be used; the visitor's choice can switch some off but never add one.
+    const active = d.wanted === undefined ? cfg.channels : cfg.channels.filter((c) => d.wanted?.includes(c));
+    if (active.length === 0) return { status: "skipped", channels: [] }; // switched off on the page: no send, and no send slot is used
+
     const claim = await d.limiter().claim();
     if (!claim.ok) {
       if (claim.reason === "unavailable") return { status: "off" }; // cannot enforce the limits: send nothing
-      return { status: claim.reason, retryInSeconds: claim.retryInSeconds, channels: cfg.channels };
+      return { status: claim.reason, retryInSeconds: claim.retryInSeconds, channels: active };
     }
 
     const fetchFn = d.fetchFn ?? fetch;
@@ -265,8 +285,8 @@ export async function maybeNotify(d: NotifyDeps): Promise<Notification> {
       try {
         const msg = buildMessage(d.data, clickedAt);
         const [telegram, email] = await Promise.all([
-          cfg.telegram ? sendTelegram(cfg.telegram, msg.telegramParts, fetchFn).catch(() => false) : Promise.resolve(null),
-          cfg.email ? sendEmail(cfg.email, msg, fetchFn).catch(() => false) : Promise.resolve(null),
+          cfg.telegram && active.includes("telegram") ? sendTelegram(cfg.telegram, msg.telegramParts, fetchFn).catch(() => false) : Promise.resolve(null),
+          cfg.email && active.includes("email") ? sendEmail(cfg.email, msg, fetchFn).catch(() => false) : Promise.resolve(null),
         ]);
         // Outcome only (no text, no addresses, no keys): visible in the Vercel logs.
         console.log("notify", JSON.stringify({ telegram, email, rows: msg.rows }));
@@ -274,7 +294,7 @@ export async function maybeNotify(d: NotifyDeps): Promise<Notification> {
         /* a delivery problem never reaches the caller */
       }
     });
-    return { status: "sending", channels: cfg.channels };
+    return { status: "sending", channels: active };
   } catch {
     return { status: "off" };
   }

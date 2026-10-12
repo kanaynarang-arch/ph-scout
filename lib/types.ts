@@ -88,7 +88,7 @@ export type NotificationStatus = "sending" | "cooldown" | "off" | "skipped_sampl
 export interface Notification {
   status: NotificationStatus;
   retryInSeconds?: number;
-  channels?: ("telegram" | "email")[]; // which channels are configured (names only)
+  channels?: ("telegram" | "email")[]; // the channels in use: configured on the server and left switched on in the page (names only)
 }
 
 export interface ScoutResponse {

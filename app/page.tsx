@@ -261,6 +261,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacte
 const CAT_COLORS = ["#3ee8c8", "#ffb02e", "#a78bfa", "#d4f55a", "#f4a9d0", "#d6b36a"];
 const EXTRAS_KEY = "ph-scout:extras";
 const CONTACTED_KEY = "ph-scout:contacted";
+const NOTIFY_KEY = "ph-scout:notify";
 
 /** Donut of how the ranked launches split across the four categories (a launch can carry more than one tag). */
 function Donut({ parts }: { parts: { label: string; n: number; color: string }[] }) {
@@ -422,6 +423,20 @@ export default function Page() {
       return next;
     });
   };
+  // Which channels the next Generate may send a copy to. Both on by default; the choice is remembered in this browser. The server
+  // only ever narrows what it has configured with this list: the page can switch a channel off but cannot add a recipient.
+  const [notifyOn, setNotifyOn] = useState<{ telegram: boolean; email: boolean }>({ telegram: true, email: true });
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(NOTIFY_KEY) ?? "null");
+      if (v && typeof v.telegram === "boolean" && typeof v.email === "boolean") setNotifyOn({ telegram: v.telegram, email: v.email });
+    } catch { /* storage blocked or bad value */ }
+  }, []);
+  const setChannel = (c: "telegram" | "email", on: boolean) => {
+    const next = { ...notifyOn, [c]: on };
+    setNotifyOn(next);
+    try { localStorage.setItem(NOTIFY_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+  };
   const [fitOnly, setFitOnly] = useState(false);
   const [prevVisit, setPrevVisit] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -440,7 +455,7 @@ export default function Page() {
     setLoading(refresh ? "refresh" : "generate");
     setError(null);
     try {
-      const res = await fetch("/api/scout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refresh, extras }) });
+      const res = await fetch("/api/scout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refresh, extras, channels: (["telegram", "email"] as const).filter((c) => notifyOn[c]) }) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Request failed");
       setData(json as ScoutResponse);
@@ -620,6 +635,26 @@ export default function Page() {
       <button type="button" onClick={importContactedFile}>Import</button>
     </div>
   );
+  const noneOn = !notifyOn.telegram && !notifyOn.email;
+  const channelSwitch = (c: "telegram" | "email", label: string) => (
+    <label className="switch"><input type="checkbox" checked={notifyOn[c]} onChange={(e) => setChannel(c, e.target.checked)} />{label}</label>
+  );
+  const notifyToggles = (
+    <div className="notify-toggles" role="group" aria-label="Copy to Kavya when you click Generate">
+      <p className="micro nav-h">Copy to Kavya on Generate</p>
+      <div className="side-switch">{channelSwitch("telegram", "Telegram")}</div>
+      <div className="side-switch">{channelSwitch("email", "Email")}</div>
+      <p className="hint">{noneOn ? "Nothing will be sent." : "Applies to the next Generate. Sent only to Kavya's own accounts, at most once per 5 minutes."}</p>
+    </div>
+  );
+  const notifyInline = (
+    <div className="notify-inline" role="group" aria-label="Copy to Kavya when you click Generate">
+      <span className="hint">On Generate, send a copy to Kavya by:</span>
+      {channelSwitch("telegram", "Telegram")}
+      {channelSwitch("email", "Email")}
+      {noneOn && <span className="hint">Nothing will be sent.</span>}
+    </div>
+  );
   const recencyPicker = (
     <div className="recency" role="group" aria-label="Launched">
       <p className="micro nav-h">Launched</p>
@@ -669,6 +704,7 @@ export default function Page() {
                   <button className="primary" onClick={() => run(false)}>Generate</button>
                 </div>
                 <p className="hint">Takes up to a minute the first time.</p>
+                {notifyInline}
                 <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
               </div>
               <div className="net" aria-hidden="true">
@@ -717,6 +753,7 @@ export default function Page() {
                 <div className="side-switch">{fitSwitch}</div>
                 <div className="side-switch">{contactedSwitch}</div>
                 <div className="side-switch">{contactedIO}</div>
+                {notifyToggles}
                 {recencyPicker}
                 {extraPicker}
               </nav>
@@ -816,6 +853,7 @@ export default function Page() {
                   {fitSwitch}
                   {contactedSwitch}
                   {contactedIO}
+                  {notifyInline}
                   {recencyPicker}
                   <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
                   {notice && <p className="notice" role="status">{notice}</p>}

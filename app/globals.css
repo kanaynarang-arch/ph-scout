@@ -505,3 +505,9 @@ button.small.accent:hover:not(:disabled) { background: rgba(255, 176, 46, 0.12);
 .cio { display: flex; gap: 16px; padding: 0 4px; }
 .cio button { height: auto; min-height: 0; padding: 2px 0; background: none; border: 0; border-radius: 6px; color: var(--mint-t); font-size: 12.5px; line-height: 18px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .cio button:disabled { color: var(--t3); text-decoration: none; cursor: default; }
+
+/* ---- copy to Kavya: channel switches ---- */
+.notify-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 14px 0 0; }
+.notify-inline .hint { font-size: 13px; }
+.notify-toggles .hint { padding: 2px 10px 0; font-size: 12px; line-height: 17px; }
+
