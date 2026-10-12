@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withBackup } from "../lib/ai-backup";
-import { geminiConfigured } from "../lib/gemini";
+import { callGemini, geminiConfigured } from "../lib/gemini";
+import type { Launch } from "../lib/types";
 import { openrouterJson } from "../lib/openrouter";
 
 const KEY = "sk-or-v1-TESTKEY-not-a-real-key";
@@ -130,5 +131,31 @@ describe("configuration and rules", () => {
     for (const f of readdirSync("lib").map((x) => `lib/${x}`)) {
       expect(readFileSync(f, "utf8"), f).not.toMatch(/api\.openai\.com|api\.anthropic\.com|x\.ai\/|api\.mistral|cohere\.(ai|com)/i);
     }
+  });
+  it("the real backup request carries public launch text only (no makers, hunter, ids of people) and unwraps {results}", async () => {
+    delete process.env.GEMINI_API_KEY; // no Google key: callGemini goes straight to the backup route
+    const launch: Launch = {
+      id: "42", name: "Acme", tagline: "Plan work", description: "A planning tool", slug: "acme", url: "https://www.producthunt.com/products/acme",
+      votesCount: 10, commentsCount: 2, createdAt: "2026-10-10T00:00:00Z", featuredAt: null, topics: [{ slug: "t", name: "Productivity" }], viaSlugs: ["t"],
+      makers: [{ id: "m9", name: "Secret Maker", username: "secretmaker" }], hunter: { name: "Secret Hunter", username: "secrethunter" },
+    };
+    let sent = "";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_u, init) => {
+      sent = String((init as RequestInit).body);
+      const row = { id: "42", oneLiner: "x", fit: "strong", fitReason: "y", angle: "z", evidenceQuote: "q" };
+      return okResponse(JSON.stringify({ results: [row] }));
+    });
+    const out = await callGemini([launch], new AbortController().signal);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("42");
+    expect(sent).toContain("Acme");
+    expect(sent).not.toMatch(/Secret|secretmaker|secrethunter|m9|makers|hunter/i);
+    expect(sent).not.toContain(KEY);
+  });
+  it("no other AI vendor package or API is used anywhere (app, lib, package.json)", () => {
+    const pkg = readFileSync("package.json", "utf8");
+    expect(pkg).not.toMatch(/@anthropic-ai|"openai"|@ai-sdk|"ai":|@mistralai|cohere-ai|groq-sdk/i);
+    const files = ["lib", "app", "app/api/scout", "app/api/send", "app/api/draft", "app/api/refresh"].flatMap((d) => readdirSync(d, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `${d}/${e.name}`));
+    for (const f of files) expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["'](openai|@anthropic-ai|@ai-sdk|groq-sdk|cohere-ai|@mistralai)/);
   });
 });

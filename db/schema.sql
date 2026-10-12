@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS launch_seen (
   first_seen_at timestamptz DEFAULT now()
 );
 
--- Limits for the auto-send of a copy of the list to Kavya (one control row per cache namespace).
--- Claimed atomically with a single conditional UPDATE ... RETURNING. Holds no message text and no addresses.
+-- Limits for sending a copy of the list to Kavya: one control row per limit key (Generate: the namespace; send buttons: namespace:send:telegram and namespace:send:email).
+-- Claimed atomically with a single INSERT ... ON CONFLICT DO UPDATE ... WHERE ... RETURNING. Holds no message text and no addresses.
 CREATE TABLE IF NOT EXISTS notify_control (
   key text PRIMARY KEY,
   last_sent_at timestamptz
