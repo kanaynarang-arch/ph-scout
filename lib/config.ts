@@ -22,6 +22,7 @@ export const GEMINI_BATCH_SIZE = 15;
 export const GEMINI_TEMPERATURE = 0.2;
 export const GEMINI_DEFAULT_MODEL = "gemini-3.8-flash";
 export const PROMPT_VERSION = "p3";
+export const OPENROUTER_DEFAULT_MODEL = "google/gemini-3.8-flash"; // the same Gemini Flash model, reached through the OpenRouter gateway (backup route only)
 
 export const URGENCY_HOT_MAX_DAYS = 2; // 0-2 hot
 export const URGENCY_WEEK_MAX_DAYS = 5; // 3-5 this week, 6-7 closing

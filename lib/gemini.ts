@@ -1,6 +1,8 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { PROFILE } from "../config/profile";
 import { GEMINI_BATCH_SIZE, GEMINI_DEFAULT_MODEL, GEMINI_TEMPERATURE } from "./config";
+import { withBackup } from "./ai-backup";
+import { openrouterJson } from "./openrouter";
 import { quoteIsVerbatim } from "./verify";
 import type { Fit, GeminiResult, Launch } from "./types";
 
@@ -10,7 +12,7 @@ import type { Fit, GeminiResult, Launch } from "./types";
 export const geminiModel = () => process.env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
 
 export function geminiConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY);
+  return Boolean(process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY); // the backup route counts: it reaches the same Gemini Flash model
 }
 
 const SYSTEM = `You help Kavya, a partnerships lead, find partnership angles with newly launched products.
@@ -61,15 +63,60 @@ export type CallFn = (batch: Launch[], signal: AbortSignal) => Promise<RawResult
 
 const FITS = new Set(["strong", "possible", "weak", "competitor"]);
 
-export const callGemini: CallFn = async (batch, signal) => {
+/** What the model receives per launch: public launch text only, nothing about people. */
+const launchPayload = (batch: Launch[]) =>
+  batch.map((l) => ({ id: l.id, name: l.name, tagline: l.tagline, description: l.description, topics: l.topics.map((t) => t.name) }));
+
+const keepValid = (parsed: unknown[]): RawResult[] =>
+  parsed.filter(
+    (r): r is RawResult =>
+      !!r && typeof (r as RawResult).id === "string" && typeof (r as RawResult).oneLiner === "string" && FITS.has((r as RawResult).fit) && typeof (r as RawResult).angle === "string",
+  );
+
+// The same schema as a plain JSON Schema (object root) for the OpenRouter backup route.
+const BACKUP_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["results"],
+  properties: {
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "oneLiner", "fit", "fitReason", "angle", "evidenceQuote"],
+        properties: {
+          id: { type: "string" },
+          oneLiner: { type: "string" },
+          fit: { type: "string", enum: ["strong", "possible", "weak", "competitor"] },
+          fitReason: { type: "string" },
+          angle: { type: "string" },
+          evidenceQuote: { type: "string" },
+        },
+      },
+    },
+  },
+};
+
+async function callGeminiBackup(batch: Launch[], signal: AbortSignal): Promise<RawResult[]> {
+  const out = (await openrouterJson({
+    system: SYSTEM,
+    user: `Launches (JSON):\n${JSON.stringify(launchPayload(batch))}\n\nReturn a JSON object {"results": [...]} with exactly one entry per launch.`,
+    schemaName: "launch_angles",
+    schema: BACKUP_SCHEMA,
+    temperature: GEMINI_TEMPERATURE,
+    signal,
+  })) as { results?: unknown } | unknown[];
+  const list = Array.isArray(out) ? out : out?.results;
+  if (!Array.isArray(list)) throw new Error("OpenRouter returned a non-array");
+  return keepValid(list);
+}
+
+export const callGemini: CallFn = (batch, signal) => withBackup(() => callGoogle(batch, signal), () => callGeminiBackup(batch, signal));
+
+const callGoogle: CallFn = async (batch, signal) => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-  const payload = batch.map((l) => ({
-    id: l.id,
-    name: l.name,
-    tagline: l.tagline,
-    description: l.description,
-    topics: l.topics.map((t) => t.name),
-  }));
+  const payload = launchPayload(batch);
   const res = await ai.models.generateContent({
     model: geminiModel(),
     contents: `Launches (JSON):\n${JSON.stringify(payload)}`,
@@ -84,10 +131,7 @@ export const callGemini: CallFn = async (batch, signal) => {
   });
   const parsed = JSON.parse(res.text ?? "[]");
   if (!Array.isArray(parsed)) throw new Error("Gemini returned a non-array");
-  return parsed.filter(
-    (r): r is RawResult =>
-      r && typeof r.id === "string" && typeof r.oneLiner === "string" && FITS.has(r.fit) && typeof r.angle === "string",
-  );
+  return keepValid(parsed);
 };
 
 function toResult(raw: RawResult, launch: Launch): GeminiResult {

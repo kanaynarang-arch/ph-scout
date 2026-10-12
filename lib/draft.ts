@@ -1,6 +1,8 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { PROFILE } from "../config/profile";
+import { withBackup } from "./ai-backup";
 import { geminiModel } from "./gemini";
+import { openrouterJson } from "./openrouter";
 import { isBrowserSameOrigin } from "./origin";
 import type { Launch } from "./types";
 
@@ -56,7 +58,20 @@ export function draftInput(src: DraftSource) {
 
 export type DraftCallFn = (src: DraftSource, signal: AbortSignal, channel?: DraftChannel) => Promise<unknown>;
 
-export const callDraft: DraftCallFn = async (src, signal, channel = "email") => {
+const BACKUP_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["subject", "body"],
+  properties: { subject: { type: "string" }, body: { type: "string" } },
+};
+
+export const callDraft: DraftCallFn = (src, signal, channel = "email") =>
+  withBackup(
+    () => callDraftGoogle(src, signal, channel),
+    () => openrouterJson({ system: systemFor(channel), user: `Launch (JSON):\n${JSON.stringify(draftInput(src))}`, schemaName: "outreach_draft", schema: BACKUP_SCHEMA, temperature: 0.4, signal }),
+  );
+
+const callDraftGoogle: DraftCallFn = async (src, signal, channel = "email") => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
   const res = await ai.models.generateContent({
     model: geminiModel(),

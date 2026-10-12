@@ -20,7 +20,7 @@ The UI is a dark dashboard built with original CSS and inline SVG (cards, pills,
 2. The server fetches launches (featured or not) from the last 7 days through the Product Hunt GraphQL API v2. It reads each of the six topics behind the four categories by votes, **4 pages (80 launches) deep**, de-duplicates by post id, and keeps **25 launches per category chosen by both signals**: a 50/50 blend of upvotes and total comments (`potentialOf` in `lib/score.ts`). Total comments are free in the list query and are an upper bound for maker comments (every maker comment is a comment), so a launch with fewer votes but a very busy thread is not cut just for sitting lower by votes. This only decides who is considered; the real score and rank still use upvotes and maker comments alone.
 3. It counts **maker comments** (top-level comments and replies written by one of the launch's makers, matched by user id) down the ranked list, up to 40 launches, stopping early when the Product Hunt rate-limit budget falls to a reserve.
 4. **Score and rank are computed in code.** Gemini never touches the order.
-5. **Gemini Flash** (`@google/genai`) labels partnership fit and writes a one-liner, an outreach angle and a verbatim evidence quote, in batched calls. Only launches without a saved result are sent. Only launch text is sent (name, tagline, description, topic names): no maker or commenter names or ids.
+5. **Gemini Flash** (`@google/genai`) labels partnership fit and writes a one-liner, an outreach angle and a verbatim evidence quote, in batched calls. Only launches without a saved result are sent. Only launch text is sent (name, tagline, description, topic names): no maker or commenter names or ids. If the direct Google call fails (invalid key, quota, outage) and a backup key is set, the same request is retried through OpenRouter to Google's own Gemini Flash model.
    **Draft message:** each row with an angle has a button that asks Gemini Flash (one call, saved in Neon for 7 days) for a short first message in Kavya's voice. It sees only public launch text and the saved angle, never founder names: the greeting carries a placeholder that the page fills in with the founder first name already on screen. She picks **Email** (subject and body) or **Short DM** (a few lines for LinkedIn or Product Hunt), edits it, copies it and sends it herself from her own accounts. Links and email addresses in the draft are rejected, the endpoint accepts only a launch id from the page, and nothing is sent by the tool.
 6. Code **verifies every quote** against the launch tagline and description. A quote that fails twice is shown with an "Unverified" tag, never hidden.
 7. The list is shown in score order with tags (fit, category, urgency), category filters in the sidebar (tick one, several or all; a launch shows if it matches any ticked category), a "Hide weak fits and competitors" switch, a "Launched" filter (any time, last 2 days, 3 to 5 days, 6 to 7 days), a search box for product or founder name and a "Hide contacted" switch (all of these only hide rows), and a source badge: **LIVE**, **CACHED** or **SAMPLE**.
@@ -75,6 +75,7 @@ Neon Postgres (free plan, added through the Vercel Marketplace) stores **only pu
 |---|---|
 | `PH_API_TOKEN` | Product Hunt developer token (server-side only) |
 | `GEMINI_API_KEY` | Google AI Studio key (server-side only) |
+| `OPENROUTER_API_KEY` | Optional backup route to Gemini Flash through OpenRouter (server-side only); used only if the direct Google call fails |
 | `GEMINI_MODEL` | Gemini Flash model id (default `gemini-3.8-flash`) |
 | `DATABASE_URL` | Neon pooled connection string (added by the Vercel Neon integration) |
 | `CRON_SECRET` | Protects `/api/refresh` |
@@ -97,6 +98,6 @@ Kavya's company profile (what Gemini may say about her product) is in `config/pr
 ## Notes
 
 - Live data comes from the Product Hunt API, which is meant for **non-commercial** use by default. This is an exam demo and is not presented as a commercial product.
-- Gemini Flash is the only AI used. No other AI provider is part of the app. Telegram and Resend are used only to deliver the copy to Kavya.
+- Gemini Flash is the only AI used: Google directly (`@google/genai`) first, and, only if that call fails and `OPENROUTER_API_KEY` is set, the same request to Google's own Gemini Flash model (`google/gemini-3.8-flash`, Google infrastructure only, no other provider) through the OpenRouter gateway. The backup sees the same public launch text, never maker names. No other AI vendor is part of the app. Telegram and Resend are used only to deliver the copy to Kavya.
 - Days since launch is whole days only (Product Hunt's launch time is day-level).
 - The app sends basic browser security headers (no sniffing, no framing, a strict referrer policy) and passes an automated accessibility scan (axe) on the landing page, the dashboard, an expanded row and the fit legend, on desktop and phone widths.
