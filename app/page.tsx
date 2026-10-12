@@ -137,6 +137,7 @@ function HowScored({ r }: { r: ScoredLaunch }) {
 
 function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacted, extras }: { r: ScoredLaunch; extras: ExtraCategoryId[]; rank?: number; showNew: boolean; aiShown: boolean; index?: number; onCopied: (msg: string) => void; contacted: boolean; onContacted: () => void }) {
   const [open, setOpen] = useState(false);
+  const canDraft = r.ai.available && r.ai.fit !== "competitor" && Boolean(r.ai.angle); // not on "Likely competitor" rows or when AI text is unavailable
   const copy = async () => {
     const ok = await copyText(r.ai.angle);
     onCopied(ok ? "Angle copied" : "Copy failed: select the text");
@@ -225,8 +226,8 @@ function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacte
                 )}
                 <div className="d-actions">
                   <button className="small" onClick={copy}>Copy angle</button>
-                  {r.ai.angle && <button className="small accent" onClick={() => makeDraft("email")} disabled={drState === "loading"}>{drState === "loading" ? "Drafting…" : dr?.channel === "email" ? "Reset email draft" : "Draft email"}</button>}
-                  {r.ai.angle && <button className="small accent" onClick={() => makeDraft("dm")} disabled={drState === "loading"}>{dr?.channel === "dm" ? "Reset short DM" : "Draft short DM"}</button>}
+                  {canDraft && <button className="small accent" onClick={() => makeDraft("email")} disabled={drState === "loading"}>{drState === "loading" ? "Drafting…" : dr?.channel === "email" ? "Reset email draft" : "Draft email"}</button>}
+                  {canDraft && <button className="small accent" onClick={() => makeDraft("dm")} disabled={drState === "loading"}>{dr?.channel === "dm" ? "Reset short DM" : "Draft short DM"}</button>}
                   {r.websiteUrl && <a className="btn-link" href={r.websiteUrl} target="_blank" rel="noreferrer">Product site ↗</a>}
                   <button className={`small${contacted ? " on-contacted" : ""}`} onClick={onContacted} aria-pressed={contacted}>{contacted ? "✓ Contacted (undo)" : "Mark as contacted"}</button>
                   <span className="note">The angle is a starting point for you, not a message. "Contacted" is only a note kept in this browser: the tool never contacts anyone.</span>

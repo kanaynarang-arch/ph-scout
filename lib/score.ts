@@ -25,12 +25,6 @@ export function urgencyFor(days: number): Urgency {
   return "closing";
 }
 
-export const URGENCY_LABEL: Record<Urgency, string> = {
-  hot: "Hot — contact now",
-  week: "Contact this week",
-  closing: "Window closing",
-};
-
 type Potential = Pick<Launch, "id" | "votesCount" | "commentsCount" | "name">;
 
 /**

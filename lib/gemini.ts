@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { PROFILE } from "../config/profile";
-import { GEMINI_BATCH_SIZE, GEMINI_DEFAULT_MODEL, GEMINI_TEMPERATURE } from "./config";
+import { GEMINI_BATCH_SIZE, GEMINI_DEFAULT_MODEL, GEMINI_TEMPERATURE, GOOGLE_CALL_CAP_MS, GOOGLE_CALL_FLOOR_MS } from "./config";
 import { primarySignal, withBackup } from "./ai-backup";
 import { openrouterJson } from "./openrouter";
 import { quoteIsVerbatim } from "./verify";
@@ -59,9 +59,11 @@ interface RawResult {
   evidenceQuote: string;
 }
 
-const GOOGLE_CALL_CAP_MS = 25_000; // leaves the rest of the run for the backup if Google hangs
+/** How long the direct Google call may take: half of the time left (so the backup keeps the other half), between the floor and the cap. */
+export const googleCapMs = (remainingMs?: number): number =>
+  remainingMs === undefined ? GOOGLE_CALL_CAP_MS : Math.max(GOOGLE_CALL_FLOOR_MS, Math.min(GOOGLE_CALL_CAP_MS, Math.floor(remainingMs / 2)));
 
-export type CallFn = (batch: Launch[], signal: AbortSignal) => Promise<RawResult[]>;
+export type CallFn = (batch: Launch[], signal: AbortSignal, remainingMs?: number) => Promise<RawResult[]>;
 
 const FITS = new Set(["strong", "possible", "weak", "competitor"]);
 
@@ -114,7 +116,7 @@ async function callGeminiBackup(batch: Launch[], signal: AbortSignal): Promise<R
   return keepValid(list);
 }
 
-export const callGemini: CallFn = (batch, signal) => withBackup(() => callGoogle(batch, primarySignal(signal, GOOGLE_CALL_CAP_MS)), () => callGeminiBackup(batch, signal));
+export const callGemini: CallFn = (batch, signal, remainingMs) => withBackup(() => callGoogle(batch, primarySignal(signal, googleCapMs(remainingMs))), () => callGeminiBackup(batch, signal));
 
 const callGoogle: CallFn = async (batch, signal) => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
@@ -169,7 +171,7 @@ export async function generateAngles(launches: Launch[], deadlineAt: number, cal
     calls++;
     const remaining = Math.max(1000, deadlineAt - Date.now());
     try {
-      const out = await call(batch, AbortSignal.timeout(remaining));
+      const out = await call(batch, AbortSignal.timeout(remaining), remaining);
       anySuccess = true;
       return out;
     } catch {

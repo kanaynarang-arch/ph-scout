@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { primarySignal, withBackup } from "../lib/ai-backup";
-import { callGemini, geminiConfigured } from "../lib/gemini";
+import { callGemini, generateAngles, geminiConfigured, googleCapMs } from "../lib/gemini";
 import type { Launch } from "../lib/types";
 import { openrouterJson } from "../lib/openrouter";
 
@@ -178,5 +178,20 @@ describe("configuration and rules", () => {
     expect(s.aborted).toBe(false);
     c.abort();
     expect(s.aborted).toBe(true);
+  });
+  it("the Google call gets at most half of the time left (never below the floor, never above the cap), so the backup keeps time", () => {
+    expect(googleCapMs(undefined)).toBe(25_000);
+    expect(googleCapMs(120_000)).toBe(25_000);
+    expect(googleCapMs(28_000)).toBe(14_000); // cold run: counting used 24 s of the 52 s
+    expect(googleCapMs(10_000)).toBe(8_000);
+    expect(googleCapMs(0)).toBe(8_000);
+  });
+  it("generateAngles tells the call how much time is left, so the cap can follow it", async () => {
+    const seen: (number | undefined)[] = [];
+    const launch = { id: "1", name: "A", tagline: "t", description: "d", slug: "a", url: "https://www.producthunt.com/products/a", votesCount: 1, commentsCount: 0, createdAt: "2026-10-10T00:00:00Z", featuredAt: null, topics: [], viaSlugs: [], makers: [], hunter: null } as Launch;
+    await generateAngles([launch], Date.now() + 28_000, async (_b, _s, remaining) => { seen.push(remaining); return []; });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeGreaterThan(26_000);
+    expect(seen[0]).toBeLessThanOrEqual(28_000);
   });
 });

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { PROFILE } from "../config/profile";
 import { getOrRefresh, key, readMany } from "./cache";
-import { TTL_GEMINI_MS } from "./config";
+import { DRAFT_TIMEOUT_MS, TTL_GEMINI_MS } from "./config";
 import type { ExtraCategoryId } from "./categories";
 import { callDraft, DRAFT_VERSION, sanitizeDraft, type Draft, type DraftChannel, type DraftSource } from "./draft";
 import { geminiConfigured } from "./gemini";
@@ -50,7 +50,7 @@ export async function draftFor(src: DraftSource, channel: DraftChannel = "email"
     validate: isDraft,
     lockName: `draft:${l.id}`,
     fetcher: async () => {
-      const d = sanitizeDraft(await callDraft(src, AbortSignal.timeout(25_000), channel), channel);
+      const d = sanitizeDraft(await callDraft(src, AbortSignal.timeout(DRAFT_TIMEOUT_MS), channel), channel);
       if (!d) throw new Error("Unusable draft");
       return d;
     },

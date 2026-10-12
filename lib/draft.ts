@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { PROFILE } from "../config/profile";
 import { primarySignal, withBackup } from "./ai-backup";
+import { DRAFT_GOOGLE_CAP_MS } from "./config";
 import { geminiModel } from "./gemini";
 import { openrouterJson } from "./openrouter";
 import { parseExtras, type ExtraCategoryId } from "./categories";
@@ -68,7 +69,7 @@ const BACKUP_SCHEMA = {
 
 export const callDraft: DraftCallFn = (src, signal, channel = "email") =>
   withBackup(
-    () => callDraftGoogle(src, primarySignal(signal, 12_000), channel),
+    () => callDraftGoogle(src, primarySignal(signal, DRAFT_GOOGLE_CAP_MS), channel),
     () => openrouterJson({ system: systemFor(channel), user: `Launch (JSON):\n${JSON.stringify(draftInput(src))}`, schemaName: "outreach_draft", schema: BACKUP_SCHEMA, temperature: 0.4, signal }),
   );
 
