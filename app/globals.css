@@ -509,5 +509,9 @@ button.small.accent:hover:not(:disabled) { background: rgba(255, 176, 46, 0.12);
 /* ---- copy to Kavya: channel switches ---- */
 .notify-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 14px 0 0; }
 .notify-inline .hint { font-size: 13px; }
-.notify-toggles .hint { padding: 2px 10px 0; font-size: 12px; line-height: 17px; }
+.send-copy .nav-h { padding-left: 0; }
+.side .send-copy { padding: 0 8px; }
+.send-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.send-copy .hint { margin-top: 8px; font-size: 12px; line-height: 17px; }
+.m-filters .send-copy { width: 100%; }
 

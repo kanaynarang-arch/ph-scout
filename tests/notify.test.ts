@@ -13,10 +13,13 @@ import {
   parseChannels,
   safeLink,
   sendEmail,
+  sendNow,
   sendTelegram,
+  type Channel,
   type Limiter,
 } from "../lib/notify";
 import { handleScout } from "../lib/scout-handler";
+import { handleSend } from "../lib/send-handler";
 import type { ScoredLaunch, ScoutResponse } from "../lib/types";
 
 // ---------------------------------------------------------------- fixtures (no real network, no real sends)
@@ -609,5 +612,168 @@ describe("channel choice through the POST handler", () => {
     await h.settle();
     expect(out.notification.status).toBe("skipped");
     expect(h.f.calls.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------- 8. explicit "Send to Telegram" / "Send to email" buttons
+describe("sendNow (one channel, on click)", () => {
+  const perChannel = (c: ReturnType<typeof clock>) => {
+    const lims: Record<Channel, Limiter> = { telegram: memoryLimiter(c.now), email: memoryLimiter(c.now) };
+    return (ch: Channel) => lims[ch];
+  };
+  const go = (h: ReturnType<typeof harness>, channel: Channel, limiterFor: (c: Channel) => Limiter, over: Partial<ScoutResponse> = {}, env = h.env) =>
+    sendNow({ channel, data: data(over), env, limiterFor, schedule: h.schedule, fetchFn: h.f.fn, now: h.c.now });
+  const hosts = (h: ReturnType<typeof harness>) => h.f.calls.map((c) => new URL(c.url).host);
+
+  it("Telegram button: one Telegram request, no email request, the first line names the click", async () => {
+    const h = harness();
+    const n = await go(h, "telegram", perChannel(h.c));
+    await h.settle();
+    expect(n).toEqual({ status: "sending", channels: ["telegram"] });
+    expect(hosts(h)).toEqual(["api.telegram.org"]);
+    expect(String(h.f.calls[0].body.text)).toContain("You clicked Send to Telegram on 2026-10-11 17:30 IST");
+    expect(h.f.calls[0].body.chat_id).toBe("42");
+  });
+  it("email button: one email request to the configured address only, no Telegram request", async () => {
+    const h = harness();
+    const n = await go(h, "email", perChannel(h.c));
+    await h.settle();
+    expect(n).toEqual({ status: "sending", channels: ["email"] });
+    expect(hosts(h)).toEqual(["api.resend.com"]);
+    expect(h.f.calls[0].body.to).toEqual(["kavya@example.com"]);
+    expect(String(h.f.calls[0].body.text)).toContain("You clicked Send to email on");
+  });
+  it("each channel has its own limit: a Telegram send never blocks an email send, but a second Telegram send does", async () => {
+    const h = harness();
+    const lf = perChannel(h.c);
+    expect((await go(h, "telegram", lf)).status).toBe("sending");
+    expect((await go(h, "email", lf)).status).toBe("sending");
+    h.c.advance(60);
+    const again = await go(h, "telegram", lf);
+    expect(again.status).toBe("cooldown");
+    expect(again.retryInSeconds).toBe(NOTIFY_COOLDOWN_SECONDS - 60);
+    h.c.advance(NOTIFY_COOLDOWN_SECONDS);
+    expect((await go(h, "telegram", lf)).status).toBe("sending");
+    await h.settle();
+    expect(hosts(h)).toEqual(["api.telegram.org", "api.resend.com", "api.telegram.org"]);
+  });
+  it("is independent of the Generate copy's own limit", async () => {
+    const h = harness();
+    await maybeNotify({ generate: true, data: data(), env: h.env, limiter: () => h.limiter, schedule: h.schedule, fetchFn: h.f.fn, now: h.c.now });
+    expect((await go(h, "telegram", perChannel(h.c))).status).toBe("sending");
+  });
+  it("a channel that is not configured is off, and nothing is requested", async () => {
+    const h = harness({ env: { ...ENV, RESEND_API_KEY: undefined } });
+    expect(await go(h, "email", perChannel(h.c))).toEqual({ status: "off" });
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("the kill switch wins", async () => {
+    const h = harness({ env: { ...ENV, NOTIFICATIONS_ENABLED: "false" } });
+    expect((await go(h, "telegram", perChannel(h.c))).status).toBe("off");
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("never sends SAMPLE data or an empty list, and does not use the slot", async () => {
+    const h = harness();
+    const lf = perChannel(h.c);
+    expect((await go(h, "telegram", lf, { source: "SAMPLE" })).status).toBe("skipped_sample");
+    expect((await go(h, "telegram", lf, { ranked: [] })).status).toBe("skipped");
+    expect(h.f.calls.length).toBe(0);
+    expect((await go(h, "telegram", lf)).status).toBe("sending"); // slot was never claimed
+  });
+  it("fails closed when the limit cannot be checked", async () => {
+    const h = harness();
+    const unavailable: Limiter = { claim: async () => ({ ok: false, reason: "unavailable" }) };
+    expect((await go(h, "email", () => unavailable)).status).toBe("off");
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("a provider failure does not throw and does not give the slot back", async () => {
+    const f = fakeFetch({ telegram: () => new Response("nope", { status: 500 }) });
+    const h = harness({ fetch: f });
+    const lf = perChannel(h.c);
+    expect((await go(h, "telegram", lf)).status).toBe("sending");
+    await h.settle();
+    expect((await go(h, "telegram", lf)).status).toBe("cooldown");
+  });
+});
+
+describe("POST /api/send handler", () => {
+  const browser = { "sec-fetch-site": "same-origin", host: "ph-scout.vercel.app" };
+  const post = (body: unknown, headers: Record<string, string> = browser) =>
+    new Request("https://ph-scout.vercel.app/api/send", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+  const setup = () => {
+    const h = harness();
+    const lims: Record<Channel, Limiter> = { telegram: memoryLimiter(h.c.now), email: memoryLimiter(h.c.now) };
+    let runs = 0;
+    const call = (req: Request, over: Partial<ScoutResponse> = {}) =>
+      handleSend(req, { run: async () => { runs++; return data(over); }, limiterFor: (c) => lims[c], schedule: h.schedule, env: h.env, fetchFn: h.f.fn, now: h.c.now });
+    return { h, call, runs: () => runs };
+  };
+
+  it("rejects requests without the browser headers (and builds and sends nothing)", async () => {
+    const { h, call, runs } = setup();
+    const wrongHeaders: Record<string, string>[] = [{}, { "sec-fetch-site": "cross-site" }, { origin: "https://evil.example", host: "ph-scout.vercel.app" }];
+    for (const headers of wrongHeaders) {
+      expect((await call(post({ channel: "telegram" }, headers))).status).toBe(403);
+    }
+    await h.settle();
+    expect(runs()).toBe(0);
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("rejects a missing or unknown channel, bad JSON and oversized bodies", async () => {
+    const { h, call } = setup();
+    for (const body of [{}, { channel: "sms" }, { channel: ["telegram"] }, { channel: 5 }, "not json", { channel: "telegram", pad: "x".repeat(600) }]) {
+      expect((await call(post(body))).status).toBe(400);
+    }
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("sends only the chosen channel from a browser request", async () => {
+    const { h, call } = setup();
+    const out = await call(post({ channel: "email" }));
+    await h.settle();
+    expect(out).toEqual({ status: 200, body: { notification: { status: "sending", channels: ["email"] } } });
+    expect(h.f.calls.map((c) => new URL(c.url).host)).toEqual(["api.resend.com"]);
+  });
+  it("ignores any recipient, text or list supplied by the page", async () => {
+    const { h, call } = setup();
+    await call(post({ channel: "telegram", to: "attacker@evil.example", chat_id: "999", text: "BUY CRYPTO", message: "BUY CRYPTO", ranked: [{ name: "Fake" }] }));
+    await h.settle();
+    const all = JSON.stringify(h.f.calls.map((c) => c.body));
+    expect(h.f.calls[0].body.chat_id).toBe("42");
+    for (const bad of ["attacker", "999", "BUY CRYPTO", "Fake"]) expect(all).not.toContain(bad);
+  });
+  it("reports a cooldown on a second click of the same button", async () => {
+    const { h, call } = setup();
+    expect((await call(post({ channel: "telegram" }))).body.notification?.status).toBe("sending");
+    h.c.advance(30);
+    const second = await call(post({ channel: "telegram" }));
+    expect(second.body.notification?.status).toBe("cooldown");
+    expect(second.body.notification?.retryInSeconds).toBe(NOTIFY_COOLDOWN_SECONDS - 30);
+    await h.settle();
+    expect(h.f.calls.length).toBe(1);
+  });
+  it("does not send SAMPLE data", async () => {
+    const { h, call } = setup();
+    const out = await call(post({ channel: "telegram" }), { source: "SAMPLE" });
+    await h.settle();
+    expect(out.body.notification?.status).toBe("skipped_sample");
+    expect(h.f.calls.length).toBe(0);
+  });
+  it("answers 500 without sending when the list cannot be built", async () => {
+    const h = harness();
+    const out = await handleSend(post({ channel: "telegram" }), { run: async () => { throw new Error("boom"); }, limiterFor: () => memoryLimiter(h.c.now), schedule: h.schedule, env: h.env, fetchFn: h.f.fn });
+    expect(out.status).toBe(500);
+    expect(JSON.stringify(out.body)).not.toContain("boom");
+    expect(h.f.calls.length).toBe(0);
+  });
+});
+
+describe("only the allowed places can send", () => {
+  it("Refresh now, /api/refresh and the pipeline never reference the send code", () => {
+    for (const f of ["app/api/refresh/route.ts", "lib/pipeline.ts", "lib/cache.ts", "app/api/draft/route.ts"]) {
+      expect(readFileSync(f, "utf8")).not.toMatch(/sendNow|send-handler|maybeNotify|telegram|resend/i);
+    }
+  });
+  it("the page never talks to Telegram or Resend directly", () => {
+    expect(readFileSync("app/page.tsx", "utf8")).not.toMatch(/telegram\.org|resend\.com|TELEGRAM_BOT_TOKEN|RESEND_API_KEY/);
   });
 });

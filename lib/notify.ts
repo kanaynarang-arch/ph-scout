@@ -132,7 +132,8 @@ export interface BuiltMessage {
   rows: number;
 }
 
-export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_PUBLIC_URL): BuiltMessage {
+/** `how` names the click that triggered the copy ("Generate", "Send to Telegram", "Send to email"); it only appears in the first line. */
+export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_PUBLIC_URL, how = "Generate"): BuiltMessage {
   const top = data.ranked.slice(0, NOTIFY_TOP_N);
   const entries = top.map((r, i) => entryOf(r, i + 1));
   const core = CATEGORIES.map((c) => c.label).join(", ").replace(/, ([^,]*)$/, " and $1");
@@ -140,7 +141,7 @@ export function buildMessage(data: ScoutResponse, clickedAt: Date, appUrl = APP_
   const where = extras.length ? `${core}, plus the optional categories you switched on (${extras.join(", ")})` : core;
   const header = "Partnership Scout: your outreach shortlist";
   const intro =
-    `You clicked Generate on ${ist(clickedAt)}. Below are the top ${entries.length} of ${data.ranked.length} Product Hunt launches from the last 7 days ` +
+    `You clicked ${how} on ${ist(clickedAt)}. Below are the top ${entries.length} of ${data.ranked.length} Product Hunt launches from the last 7 days ` +
     `(${ist(new Date(data.window.from))} to ${ist(new Date(data.window.to))}) in ${where}, ranked by upvotes and maker comments.`;
   const source = `Data: ${data.source}${data.source === "CACHED" ? " (saved copy)" : ""}, fetched ${ist(new Date(data.fetchedAt))}.`;
   const howTo =
@@ -299,3 +300,54 @@ export async function maybeNotify(d: NotifyDeps): Promise<Notification> {
     return { status: "off" };
   }
 }
+
+// ---------------------------------------------------------------- explicit "send to this channel now" buttons
+export interface SendNowDeps {
+  channel: Channel;
+  data: ScoutResponse;
+  env: Record<string, string | undefined>;
+  limiterFor: (channel: Channel) => Limiter; // one limit per channel: at most one send per channel per 5 minutes
+  schedule: (task: () => Promise<void>) => void;
+  fetchFn?: FetchFn;
+  now?: () => Date;
+}
+
+/**
+ * Sends the list the server has just built to ONE channel (Telegram or email) because Kavya clicked that channel's button on
+ * the dashboard. Same rules as the Generate copy: only configured recipients from env, never SAMPLE data, never an empty list,
+ * the kill switch wins, a database problem means nothing is sent, and the text always comes from the server. Each channel has
+ * its own limit (one per 5 minutes), separate from the Generate copy's limit, so a Telegram send never blocks an email send.
+ */
+export async function sendNow(d: SendNowDeps): Promise<Notification> {
+  try {
+    const cfg = notifyConfig(d.env);
+    if (!cfg.enabled || !cfg.channels.includes(d.channel)) return { status: "off" };
+    if (d.data.source === "SAMPLE") return { status: "skipped_sample", channels: [d.channel] };
+    if (d.data.ranked.length === 0) return { status: "skipped", channels: [d.channel] };
+    const claim = await d.limiterFor(d.channel).claim();
+    if (!claim.ok) {
+      if (claim.reason === "unavailable") return { status: "off" };
+      return { status: "cooldown", retryInSeconds: claim.retryInSeconds, channels: [d.channel] };
+    }
+    const fetchFn = d.fetchFn ?? fetch;
+    const clickedAt = (d.now ?? (() => new Date()))();
+    d.schedule(async () => {
+      try {
+        const msg = buildMessage(d.data, clickedAt, APP_PUBLIC_URL, d.channel === "telegram" ? "Send to Telegram" : "Send to email");
+        const ok =
+          d.channel === "telegram" && cfg.telegram
+            ? await sendTelegram(cfg.telegram, msg.telegramParts, fetchFn).catch(() => false)
+            : d.channel === "email" && cfg.email
+              ? await sendEmail(cfg.email, msg, fetchFn).catch(() => false)
+              : false;
+        console.log("notify", JSON.stringify({ channel: d.channel, sent: ok, rows: msg.rows })); // outcome only
+      } catch {
+        /* a delivery problem never reaches the caller */
+      }
+    });
+    return { status: "sending", channels: [d.channel] };
+  } catch {
+    return { status: "off" };
+  }
+}
+

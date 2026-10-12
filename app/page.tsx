@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CATEGORIES, EXTRA_CATEGORIES, MAX_EXTRAS, categoryLabel, parseExtras, type CategoryId, type ExtraCategoryId } from "@/lib/categories";
 import { rowsLabel, toCsv, type CsvRow } from "@/lib/csv";
 import { MAX_IMPORT_BYTES, daysLeftText, exportContacted, mergeContacted, parseContactedImport } from "@/lib/contacted";
@@ -437,6 +437,29 @@ export default function Page() {
     setNotifyOn(next);
     try { localStorage.setItem(NOTIFY_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
   };
+  // "Send to Telegram" / "Send to email": the server builds the list itself and sends it to Kavya's own configured recipient.
+  const [sending, setSending] = useState<"telegram" | "email" | null>(null);
+  async function sendCopy(channel: "telegram" | "email") {
+    const label = channel === "telegram" ? "Telegram" : "email";
+    setSending(channel);
+    try {
+      const res = await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel, extras }) });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Request failed");
+      const n = j.notification as { status?: string; retryInSeconds?: number } | undefined;
+      if (n?.status === "sending") flash(`Copy being sent to Kavya's ${label}`);
+      else if (n?.status === "cooldown") {
+        const left = n.retryInSeconds ?? 300;
+        flash(`Not sent: next ${label} copy in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`);
+      } else if (n?.status === "skipped_sample") flash("Not sent: this is sample data");
+      else if (n?.status === "skipped") flash("Not sent: there are no launches to send");
+      else flash(`Not sent: ${label} sending is switched off`);
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Could not send the copy");
+    } finally {
+      setSending(null);
+    }
+  }
   const [fitOnly, setFitOnly] = useState(false);
   const [prevVisit, setPrevVisit] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -525,9 +548,11 @@ export default function Page() {
     if (moreOpen) for (const launch of more) out.push({ rank: data.ranked.length + data.moreLaunches.indexOf(launch) + 1, launch });
     return out;
   };
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = (msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current); // a newer message must not be cleared by the older one's timer
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
   };
   const copyCsv = async () => {
     const rows = csvRows();
@@ -639,12 +664,15 @@ export default function Page() {
   const channelSwitch = (c: "telegram" | "email", label: string) => (
     <label className="switch"><input type="checkbox" checked={notifyOn[c]} onChange={(e) => setChannel(c, e.target.checked)} />{label}</label>
   );
-  const notifyToggles = (
-    <div className="notify-toggles" role="group" aria-label="Copy to Kavya when you click Generate">
-      <p className="micro nav-h">Copy to Kavya on Generate</p>
-      <div className="side-switch">{channelSwitch("telegram", "Telegram")}</div>
-      <div className="side-switch">{channelSwitch("email", "Email")}</div>
-      <p className="hint">{noneOn ? "Nothing will be sent." : "Applies to the next Generate. Sent only to Kavya's own accounts, at most once per 5 minutes."}</p>
+  const autoText = noneOn ? "Generate does not send a copy (set on the home screen)." : `Generate also sends a copy to ${notifyOn.telegram && notifyOn.email ? "Telegram and email" : notifyOn.telegram ? "Telegram" : "email"} (set on the home screen).`;
+  const sendPanel = (
+    <div className="send-copy" role="group" aria-label="Send a copy to Kavya now">
+      <p className="micro nav-h">Send a copy to Kavya</p>
+      <div className="send-row">
+        <button className="small" onClick={() => sendCopy("telegram")} disabled={sending !== null || busy}>{sending === "telegram" ? "Sending…" : "Send to Telegram"}</button>
+        <button className="small" onClick={() => sendCopy("email")} disabled={sending !== null || busy}>{sending === "email" ? "Sending…" : "Send to email"}</button>
+      </div>
+      <p className="hint">Sends the current list to Kavya's own account only, at most once per 5 minutes per channel. {autoText}</p>
     </div>
   );
   const notifyInline = (
@@ -753,7 +781,7 @@ export default function Page() {
                 <div className="side-switch">{fitSwitch}</div>
                 <div className="side-switch">{contactedSwitch}</div>
                 <div className="side-switch">{contactedIO}</div>
-                {notifyToggles}
+                {sendPanel}
                 {recencyPicker}
                 {extraPicker}
               </nav>
@@ -853,7 +881,7 @@ export default function Page() {
                   {fitSwitch}
                   {contactedSwitch}
                   {contactedIO}
-                  {notifyInline}
+                  {sendPanel}
                   {recencyPicker}
                   <details className="extras-box"><summary>Add optional categories{extras.length ? ` (${extras.length} on)` : ""}</summary>{extraPicker}</details>
                   {notice && <p className="notice" role="status">{notice}</p>}

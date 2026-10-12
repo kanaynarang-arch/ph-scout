@@ -36,4 +36,4 @@
 
 So the tool is built to stop at the ranked list with a suggested outreach angle and, on request, a draft message for Kavya to edit and send herself. It never contacts founders, never looks up emails and never sends outreach. Kavya reads the list and does all outreach herself.
 
-The one thing the app sends is a copy of the list to Kavya's own Telegram and email when she clicks Generate (recipients come from server settings only, at most one per 5 minutes, never for SAMPLE data; the page has Telegram and Email switches, both on by default, which can only switch a channel off). It can be switched off by unsetting `NOTIFICATIONS_ENABLED`.
+The one thing the app sends is a copy of the list to Kavya's own Telegram and email when she clicks Generate (recipients come from server settings only, at most one per 5 minutes, never for SAMPLE data; the home screen has Telegram and Email switches for Generate, both on by default, which can only switch a channel off; the dashboard has Send to Telegram and Send to email buttons). It can be switched off by unsetting `NOTIFICATIONS_ENABLED`.
