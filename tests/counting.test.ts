@@ -11,7 +11,7 @@ process.env.PH_API_TOKEN = "test-token";
 import { _clearLocks, writeMany } from "../lib/cache";
 import { RATE_LIMIT_RESERVE } from "../lib/config";
 import { runScout } from "../lib/pipeline";
-import { countMakerCommentsBatch, type RateState } from "../lib/producthunt";
+import { countMakerComments, countMakerCommentsBatch, type RateState } from "../lib/producthunt";
 import { countingOrder, selectToCount } from "../lib/score";
 
 const NOW = new Date("2026-10-11T12:00:00Z");
@@ -199,5 +199,49 @@ describe("counts accumulate across runs", () => {
     expect(r.ranked.every((x) => x.makerComments === null && x.provisional)).toBe(true);
     expect(r.ranked.every((x) => x.score >= 0 && Number.isFinite(x.score))).toBe(true);
     expect(r.counted.n).toBe(0);
+  });
+});
+
+describe("countMakerComments with makers that the list hides", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const reply = (userId: string) => ({ id: `r${userId}`, userId });
+  const comment = (userId: string, replies: string[] = []) => ({ id: `c${userId}`, userId, replies: { nodes: replies.map(reply) } });
+  const page = (nodes: unknown[], makers?: { id: string }[], hasNextPage = false) => ({ data: { post: { ...(makers ? { makers } : {}), comments: { pageInfo: { hasNextPage, endCursor: hasNextPage ? "x" : null }, nodes } } } });
+  const stub = (pages: unknown[]) => {
+    const bodies: { variables: Record<string, unknown> }[] = [];
+    let i = 0;
+    vi.stubGlobal("fetch", async (_u: unknown, init: { body: string }) => {
+      bodies.push(JSON.parse(init.body));
+      return new Response(JSON.stringify(pages[Math.min(i++, pages.length - 1)]), { status: 200, headers: { "x-rate-limit-remaining": "5000", "content-type": "application/json" } });
+    });
+    return bodies;
+  };
+  const hidden = (): Launch => ({ ...mk("9", 10, 20), makers: [{ id: "0", name: "[REDACTED]", username: "[REDACTED]" }, { id: "0", name: "[REDACTED]", username: "[REDACTED]" }, { id: "m1", name: "Visible Maker", username: "vm" }] });
+
+  it("counts comments and replies by makers the list hid (ids from the post), and never counts the placeholder id 0", async () => {
+    stub([page([comment("m1"), comment("m2", ["m3", "zzz"]), comment("0"), comment("other", ["0", "m1"])], [{ id: "m1" }, { id: "m2" }, { id: "m3" }])]);
+    // m1 + (m2, reply m3) + (reply m1) = 4; the "0" author and "zzz"/"other" are not makers
+    expect(await countMakerComments(hidden(), { remaining: null })).toBe(4);
+  });
+  it("asks for the full maker list on the first page only", async () => {
+    const bodies = stub([page([comment("m2")], [{ id: "m2" }], true), page([comment("m2")])]);
+    await countMakerComments(hidden(), { remaining: null });
+    expect(bodies.map((b) => b.variables.withMakers)).toEqual([true, false]);
+  });
+  it("a maker found only on the first page is still counted on later pages", async () => {
+    stub([page([comment("m2")], [{ id: "m2" }], true), page([comment("m2"), comment("m2")])]);
+    expect(await countMakerComments(hidden(), { remaining: null })).toBe(3);
+  });
+  it("returns 0 and stops after one request when no maker can be identified at all", async () => {
+    const onlyHidden: Launch = { ...hidden(), makers: [{ id: "0", name: "[REDACTED]", username: "[REDACTED]" }] };
+    const bodies = stub([page([comment("0"), comment("x")], [], true), page([comment("0")])]);
+    expect(await countMakerComments(onlyHidden, { remaining: null })).toBe(0);
+    expect(bodies).toHaveLength(1);
+  });
+  it("makes no request for a launch with no comments or no listed makers", async () => {
+    const bodies = stub([page([comment("m1")], [{ id: "m1" }])]);
+    expect(await countMakerComments({ ...hidden(), commentsCount: 0 }, { remaining: null })).toBe(0);
+    expect(await countMakerComments({ ...hidden(), makers: [] }, { remaining: null })).toBe(0);
+    expect(bodies).toHaveLength(0);
   });
 });

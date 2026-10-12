@@ -176,8 +176,9 @@ export async function fetchLaunches(now: Date, rate: RateState, categories: Cate
 }
 
 const COMMENTS_QUERY = `
-query($id: ID!, $after: String) {
+query($id: ID!, $after: String, $withMakers: Boolean!) {
   post(id: $id) {
+    makers @include(if: $withMakers) { id }
     comments(first: 20, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes { id userId replies(first: 20) { nodes { id userId } } }
@@ -187,6 +188,7 @@ query($id: ID!, $after: String) {
 
 interface CommentsData {
   post: {
+    makers?: { id: string }[];
     comments: {
       pageInfo: { hasNextPage: boolean; endCursor: string | null };
       nodes: { id: string; userId: string; replies: { nodes: { id: string; userId: string }[] } }[];
@@ -194,14 +196,23 @@ interface CommentsData {
   } | null;
 }
 
-/** Count comments and replies whose userId is one of the launch's maker ids (at most 4 pages). */
+// Product Hunt hides some makers in list results (name "[REDACTED]", id "0"); the single-post query still has their real ids.
+const realId = (id: unknown): id is string => typeof id === "string" && id !== "" && id !== "0";
+
+/**
+ * Count comments and replies whose userId is one of the launch's maker ids (at most 4 pages). The maker ids come from the list
+ * data plus the full maker list read together with the first page of comments (no extra request), so makers that the list
+ * hides are counted too. The placeholder id "0" never matches anyone.
+ */
 export async function countMakerComments(launch: Launch, rate: RateState): Promise<number> {
-  const makerIds = new Set(launch.makers.map((m) => m.id));
-  if (makerIds.size === 0 || launch.commentsCount === 0) return 0;
+  const makerIds = new Set(launch.makers.map((m) => String(m.id)).filter(realId));
+  if (launch.makers.length === 0 || launch.commentsCount === 0) return 0;
   let after: string | null = null;
   let count = 0;
   for (let page = 0; page < MAKER_COMMENT_MAX_PAGES; page++) {
-    const data: CommentsData = await gql<CommentsData>(COMMENTS_QUERY, { id: launch.id, after }, rate);
+    const data: CommentsData = await gql<CommentsData>(COMMENTS_QUERY, { id: launch.id, after, withMakers: page === 0 }, rate);
+    if (page === 0) for (const m of data.post?.makers ?? []) if (realId(String(m.id))) makerIds.add(String(m.id));
+    if (makerIds.size === 0) return 0; // no maker can be identified, so nothing to count
     const comments = data.post?.comments;
     if (!comments) break;
     for (const c of comments.nodes) {
