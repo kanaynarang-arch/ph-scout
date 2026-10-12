@@ -636,6 +636,7 @@ export default function Page() {
   const aiOn = Boolean(data?.ai.available);
   const strongN = data ? data.ranked.filter((r) => r.ai.fit === "strong").length : 0;
   const hotRows = data ? data.ranked.filter((r) => r.urgency === "hot") : [];
+  const closingRows = data ? data.ranked.filter((r) => r.urgency === "closing") : [];
   const coveragePct = data && data.counted.of ? Math.round((data.counted.n / data.counted.of) * 100) : 0;
   const top = data?.ranked[0];
   const catParts = availableCats.map((c, i) => ({ label: c.label, n: catCount(c.id), color: CAT_COLORS[i % CAT_COLORS.length] }));
@@ -687,7 +688,7 @@ export default function Page() {
     <div className="recency" role="group" aria-label="Launched">
       <p className="micro nav-h">Launched</p>
       <div className="seg seg-wrap">
-        {([["any", "Any time"], ["hot", "Last 2 days"], ["week", "3–5 days"], ["closing", "6–7 days"]] as const).map(([id, label]) => (
+        {([["any", "Any time"], ["hot", "Last 2 days"], ["week", "3–4 days"], ["closing", "5–7 days"]] as const).map(([id, label]) => (
           <button key={id} className={`chip ${recency === id ? "on" : ""}`} aria-pressed={recency === id} onClick={() => setRecency(id)}>{label}</button>
         ))}
       </div>
@@ -818,7 +819,7 @@ export default function Page() {
                   <div className="kpi k-amber"><span className="ico ico-amber" aria-hidden="true"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2 17 17" /></svg></span><div className="kn">{data.counted.of}</div><div className="kl">Launches scanned</div></div>
                   <div className="kpi k-teal"><span className="ico ico-teal" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h12M4 14h8" /></svg></span><div className="kn">{data.ranked.length}</div><div className="kl">Ranked launches</div></div>
                   <div className="kpi k-lime"><span className="ico ico-lime" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m4 10.500 4 4 8-9" /></svg></span><div className="kn">{aiOn ? strongN : "–"}</div><div className="kl">Strong-fit launches</div></div>
-                  <div className="kpi k-purple"><span className="ico ico-purple" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1 1 1.500 1.500 1.500C10.500 7 10 5 10 3z" /></svg></span><div className="kn">{hotRows.length}</div><div className="kl">Contact now</div></div>
+                  <div className="kpi k-purple"><span className="ico ico-purple" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 .3 1 1 1.500 1.500 1.500C10.500 7 10 5 10 3z" /></svg></span><div className="kn">{hotRows.length}</div><div className="kl">Just launched</div></div>
                 </section>
 
                   <section className="bento" id="insights" aria-label="Insights">
@@ -826,12 +827,13 @@ export default function Page() {
                   <div className="card flat c-chart">
                     <div className="card-h"><h3>Where the points come from</h3><span className="micro">Top {Math.min(10, data.ranked.length)} launches</span></div>
                     <AreaChart rows={data.ranked.slice(0, 10)} />
+                    <div className="gauge-row"><Gauge pct={coveragePct} label={`${coveragePct}%`} /><div className="cov-text"><b>{data.counted.n} of {data.counted.of}</b> launches counted<p className="hint">{provisionalRows > 0 ? `${provisionalRows} ${provisionalRows === 1 ? "row is" : "rows are"} Provisional: ${provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted.` : "No row is Provisional."}{data.counted.stale > 0 ? ` ${data.counted.stale} ${data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).` : ""}</p></div></div>
                   </div>
                   <div className="card flat c-hot">
-                    <div className="card-h"><h3>Contact now</h3><span className="micro">Launched in the last 2 days</span></div>
+                    <div className="card-h"><h3>Just launched</h3><span className="micro">Last 2 days</span></div>
                     {hotRows.length === 0 ? <p className="hint">Nothing launched in the last 2 days.</p> : (
                       <ul className="hotlist">
-                        {hotRows.slice(0, 4).map((r) => (
+                        {hotRows.slice(0, 3).map((r) => (
                           <li key={r.id}>
                             <i className="hd" aria-hidden="true" />
                             <div><a href={r.url} target="_blank" rel="noreferrer">{r.name}</a><span>{r.daysSinceLaunch === 0 ? "Launched today" : `Launched ${r.daysSinceLaunch} ${r.daysSinceLaunch === 1 ? "day" : "days"} ago`} · ranked #{data.ranked.indexOf(r) + 1} overall</span></div>
@@ -840,7 +842,20 @@ export default function Page() {
                         ))}
                       </ul>
                     )}
-                    <div className="gauge-row"><Gauge pct={coveragePct} label={`${coveragePct}%`} /><div className="cov-text"><b>{data.counted.n} of {data.counted.of}</b> launches counted<p className="hint">{provisionalRows > 0 ? `${provisionalRows} ${provisionalRows === 1 ? "row is" : "rows are"} Provisional: ${provisionalRows === 1 ? "its" : "their"} score is a lower bound until counted.` : "No row is Provisional."}{data.counted.stale > 0 ? ` ${data.counted.stale} ${data.counted.stale === 1 ? "count comes" : "counts come"} from a saved copy older than 6 hours (CACHED).` : ""}</p></div></div>
+                  </div>
+                  <div className="card flat c-closing">
+                    <div className="card-h"><h3>Window closing</h3><span className="micro">2 or fewer days left</span></div>
+                    {closingRows.length === 0 ? <p className="hint">No launch has 2 or fewer days left.</p> : (
+                      <ul className="hotlist closing">
+                        {closingRows.slice(0, 3).map((r) => (
+                          <li key={r.id}>
+                            <i className="hd" aria-hidden="true" />
+                            <div><a href={r.url} target="_blank" rel="noreferrer">{r.name}</a><span>{daysLeftText(r.daysSinceLaunch).text} · ranked #{data.ranked.indexOf(r) + 1} overall</span></div>
+                            <b>{r.score.toFixed(1)}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div className="card c-scores">
                     <div className="card-h"><h3>Top scores</h3><span className="micro">Top {Math.min(8, data.ranked.length)} by score</span></div>

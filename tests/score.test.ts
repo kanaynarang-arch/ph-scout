@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { daysLeftText } from "../lib/contacted";
 import { daysSinceLaunch, scoreAll, sortByScore, sortTooEarly, urgencyFor, votesHidden } from "../lib/score";
 
 const now = new Date("2026-10-11T12:00:00Z");
@@ -79,8 +80,11 @@ describe("ordering", () => {
 });
 
 describe("urgency boundaries", () => {
-  it.each([[0, "hot"], [2, "hot"], [3, "week"], [5, "week"], [6, "closing"], [7, "closing"]])("day %i is %s", (d, u) => {
+  it.each([[0, "hot"], [2, "hot"], [3, "week"], [4, "week"], [5, "closing"], [6, "closing"], [7, "closing"]])("day %i is %s", (d, u) => {
     expect(urgencyFor(d as number)).toBe(u);
+  });
+  it("a launch is 'closing' exactly when the row's days-left caption says closing (2 or fewer days left)", () => {
+    for (let d = 0; d <= 7; d++) expect(urgencyFor(d) === "closing", `day ${d}`).toBe(daysLeftText(d).closing);
   });
   it("counts whole days only", () => {
     expect(daysSinceLaunch("2026-10-08T07:01:00Z", now)).toBe(3);

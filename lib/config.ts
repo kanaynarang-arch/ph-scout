@@ -25,7 +25,7 @@ export const PROMPT_VERSION = "p3";
 export const OPENROUTER_DEFAULT_MODEL = "google/gemini-3.8-flash"; // the same Gemini Flash model, reached through the OpenRouter gateway (backup route only)
 
 export const URGENCY_HOT_MAX_DAYS = 2; // 0-2 hot
-export const URGENCY_WEEK_MAX_DAYS = 5; // 3-5 this week, 6-7 closing
+export const URGENCY_WEEK_MAX_DAYS = 4; // 3-4 this week, 5-7 closing (2 or fewer days left of the 7-day window)
 
 export const TTL_LIST_MS = 60 * 60 * 1000; // 1 hour
 export const TTL_COUNTS_MS = 6 * 60 * 60 * 1000; // 6 hours
