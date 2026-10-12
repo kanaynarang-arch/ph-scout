@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { PROFILE } from "../config/profile";
 import { getOrRefresh, key, readMany } from "./cache";
 import { TTL_GEMINI_MS } from "./config";
+import type { ExtraCategoryId } from "./categories";
 import { callDraft, DRAFT_VERSION, sanitizeDraft, type Draft, type DraftChannel, type DraftSource } from "./draft";
 import { geminiConfigured } from "./gemini";
 import { geminiKey, isLaunchArray } from "./pipeline";
@@ -13,13 +14,17 @@ const sha = (s: string) => createHash("sha1").update(s).digest("hex").slice(0, 1
 const isDraft = (v: unknown): v is Draft => !!v && typeof (v as Draft).subject === "string" && typeof (v as Draft).body === "string";
 
 /** Finds the launch (and its saved angle) from the saved list in Neon, falling back to the bundled snapshot. */
-export async function lookupSource(id: string): Promise<DraftSource | null> {
+export async function lookupSource(id: string, extras: ExtraCategoryId[] = []): Promise<DraftSource | null> {
   const snap = loadSnapshot();
   let launch: Launch | undefined;
   let angle = "";
   try {
-    const saved = await readMany<Launch[]>([key("launches")], isLaunchArray);
-    launch = saved.entries.get(key("launches"))?.value.find((l) => l.id === id);
+    const keys = extras.length ? [key("launches"), key("launches", "x", extras.join("+"))] : [key("launches")];
+    const saved = await readMany<Launch[]>(keys, isLaunchArray);
+    for (const k of keys) {
+      launch = saved.entries.get(k)?.value.find((l) => l.id === id);
+      if (launch) break;
+    }
     if (launch) {
       const g = await readMany<GeminiResult>([geminiKey(launch)], isGeminiResult);
       angle = g.entries.get(geminiKey(launch))?.value.angle ?? "";

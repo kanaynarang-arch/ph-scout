@@ -135,7 +135,7 @@ function HowScored({ r }: { r: ScoredLaunch }) {
   );
 }
 
-function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacted }: { r: ScoredLaunch; rank?: number; showNew: boolean; aiShown: boolean; index?: number; onCopied: (msg: string) => void; contacted: boolean; onContacted: () => void }) {
+function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacted, extras }: { r: ScoredLaunch; extras: ExtraCategoryId[]; rank?: number; showNew: boolean; aiShown: boolean; index?: number; onCopied: (msg: string) => void; contacted: boolean; onContacted: () => void }) {
   const [open, setOpen] = useState(false);
   const copy = async () => {
     const ok = await copyText(r.ai.angle);
@@ -150,7 +150,7 @@ function Row({ r, rank, showNew, aiShown, index, onCopied, contacted, onContacte
     setDrState("loading");
     setDrErr("");
     try {
-      const res = await fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, channel }) });
+      const res = await fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, channel, extras }) });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Drafting failed");
       setDr({ subject: String(j.subject ?? ""), body: String(j.body).split("{{first_name}}").join(firstName), channel });
@@ -910,7 +910,7 @@ export default function Page() {
                   {ranked.length > 0 && (
                     <div className="table">
                       <div className="thead" aria-hidden="true"><span>#</span><span>Product</span><span>Suggested outreach angle</span><span>Score and activity</span><span /></div>
-                      {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}
+                      {ranked.map((r, i) => <Row key={r.id} r={r} rank={data.ranked.indexOf(r) + 1 || i + 1} showNew={isNew(r)} aiShown index={i} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} extras={scannedExtras} />)}
                     </div>
                   )}
                 </section>
@@ -919,14 +919,14 @@ export default function Page() {
                   <section className="panel flat" id="early">
                     <div className="listhead"><h2>Too early to rank <span className="count">{tooEarly.length}</span></h2></div>
                     <p className="hint">Launched today; Product Hunt is still hiding the votes. They have no score yet and are not ranked.</p>
-                    <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
+                    <div className="table">{tooEarly.map((r) => <Row key={r.id} r={r} showNew={isNew(r)} aiShown={r.ai.angle !== ""} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} extras={scannedExtras} />)}</div>
                   </section>
                 )}
 
                 {data.moreLaunches.length > 0 && (
                   <details className="panel flat more" id="more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
                     <summary>More launches ({more.length}), in score order, without an angle</summary>
-                    <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} />)}</div>
+                    <div className="table">{more.map((r) => <Row key={r.id} r={r} rank={data.ranked.length + data.moreLaunches.indexOf(r) + 1} showNew={isNew(r)} aiShown={false} onCopied={flash} contacted={Boolean(contacted[r.id])} onContacted={() => toggleContacted(r.id)} extras={scannedExtras} />)}</div>
                   </details>
                 )}
 

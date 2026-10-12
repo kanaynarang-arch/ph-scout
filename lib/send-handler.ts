@@ -1,6 +1,6 @@
 import { parseExtras } from "./categories";
 import { isBrowserSameOrigin } from "./origin";
-import { sendNow, type Channel, type Limiter } from "./notify";
+import { notifyConfig, sendNow, type Channel, type Limiter } from "./notify";
 import { runScout } from "./pipeline";
 import type { Notification, ScoutResponse } from "./types";
 
@@ -34,12 +34,16 @@ export async function handleSend(req: Request, deps: SendHandlerDeps): Promise<{
     return { status: 400, body: { error: "Bad request." } };
   }
   if (channel !== "telegram" && channel !== "email") return { status: 400, body: { error: "Bad request." } };
+  // Nothing to build if sending is switched off or this channel is not set up: skip the work (Product Hunt and Gemini budget).
+  const env = deps.env ?? process.env;
+  const cfg = notifyConfig(env);
+  if (!cfg.enabled || !cfg.channels.includes(channel)) return { status: 200, body: { notification: { status: "off" } } };
   let data: ScoutResponse;
   try {
     data = await (deps.run ?? ((o) => runScout(o)))({ extras });
   } catch {
     return { status: 500, body: { error: "Could not build the list to send. Please try again." } };
   }
-  const notification = await sendNow({ channel, data, env: deps.env ?? process.env, limiterFor: deps.limiterFor, schedule: deps.schedule, fetchFn: deps.fetchFn, now: deps.now });
+  const notification = await sendNow({ channel, data, env, limiterFor: deps.limiterFor, schedule: deps.schedule, fetchFn: deps.fetchFn, now: deps.now });
   return { status: 200, body: { notification } };
 }

@@ -9,5 +9,5 @@
 - Optional extra categories are off by default, come only from the fixed menu in lib/categories.ts (at most 2), and are accepted only as ids from a same-origin browser request: the client never supplies Product Hunt topic names. The four built-in categories are always scanned.
 - All numbers are computed in code. Gemini writes language only (fit label, one-liner, outreach angle, quote). Rank = score from upvotes and maker comments only.
 - Only public launch text goes to Gemini, on the direct route and on the OpenRouter backup route alike. No maker or commenter names or IDs.
-- Neon stores only public Product Hunt launch data, maker-comment counts, Gemini outputs, first-seen launch ids, and the send limits (one control row; never message text, tokens or addresses).
+- Neon stores only public Product Hunt launch data, maker-comment counts, Gemini outputs, first-seen launch ids, and the send limits (a few control rows: one for Generate, one per send-button channel; never message text, tokens or addresses).
 - The app must work with no DATABASE_URL and with Neon down (it then fetches live every time, and falls back to the bundled snapshot labelled SAMPLE).

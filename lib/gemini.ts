@@ -1,7 +1,7 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { PROFILE } from "../config/profile";
 import { GEMINI_BATCH_SIZE, GEMINI_DEFAULT_MODEL, GEMINI_TEMPERATURE } from "./config";
-import { withBackup } from "./ai-backup";
+import { primarySignal, withBackup } from "./ai-backup";
 import { openrouterJson } from "./openrouter";
 import { quoteIsVerbatim } from "./verify";
 import type { Fit, GeminiResult, Launch } from "./types";
@@ -59,6 +59,8 @@ interface RawResult {
   evidenceQuote: string;
 }
 
+const GOOGLE_CALL_CAP_MS = 25_000; // leaves the rest of the run for the backup if Google hangs
+
 export type CallFn = (batch: Launch[], signal: AbortSignal) => Promise<RawResult[]>;
 
 const FITS = new Set(["strong", "possible", "weak", "competitor"]);
@@ -112,7 +114,7 @@ async function callGeminiBackup(batch: Launch[], signal: AbortSignal): Promise<R
   return keepValid(list);
 }
 
-export const callGemini: CallFn = (batch, signal) => withBackup(() => callGoogle(batch, signal), () => callGeminiBackup(batch, signal));
+export const callGemini: CallFn = (batch, signal) => withBackup(() => callGoogle(batch, primarySignal(signal, GOOGLE_CALL_CAP_MS)), () => callGeminiBackup(batch, signal));
 
 const callGoogle: CallFn = async (batch, signal) => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });

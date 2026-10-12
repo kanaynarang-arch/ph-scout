@@ -1,8 +1,9 @@
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { PROFILE } from "../config/profile";
-import { withBackup } from "./ai-backup";
+import { primarySignal, withBackup } from "./ai-backup";
 import { geminiModel } from "./gemini";
 import { openrouterJson } from "./openrouter";
+import { parseExtras, type ExtraCategoryId } from "./categories";
 import { isBrowserSameOrigin } from "./origin";
 import type { Launch } from "./types";
 
@@ -67,7 +68,7 @@ const BACKUP_SCHEMA = {
 
 export const callDraft: DraftCallFn = (src, signal, channel = "email") =>
   withBackup(
-    () => callDraftGoogle(src, signal, channel),
+    () => callDraftGoogle(src, primarySignal(signal, 12_000), channel),
     () => openrouterJson({ system: systemFor(channel), user: `Launch (JSON):\n${JSON.stringify(draftInput(src))}`, schemaName: "outreach_draft", schema: BACKUP_SCHEMA, temperature: 0.4, signal }),
   );
 
@@ -112,7 +113,7 @@ export function sanitizeDraft(raw: unknown, channel: DraftChannel = "email"): Dr
 export { isBrowserSameOrigin } from "./origin";
 
 export interface DraftDeps {
-  lookup: (id: string) => Promise<DraftSource | null>;
+  lookup: (id: string, extras?: ExtraCategoryId[]) => Promise<DraftSource | null>;
   draftFor: (src: DraftSource, channel: DraftChannel) => Promise<Draft>;
 }
 
@@ -122,19 +123,21 @@ export async function handleDraft(req: Request, deps: DraftDeps): Promise<{ stat
   if (!isBrowserSameOrigin(req.headers)) return { status: 403, body: { error: "Drafting is only available from the page." } };
   let id: unknown;
   let channel: DraftChannel = "email";
+  let extras: ExtraCategoryId[] = [];
   try {
     const text = await req.text();
     if (text.length > 500) return { status: 400, body: { error: "Bad request." } };
-    const parsed = JSON.parse(text) as { id?: unknown; channel?: unknown };
+    const parsed = JSON.parse(text) as { id?: unknown; channel?: unknown; extras?: unknown };
     id = parsed.id;
     if (parsed.channel === "dm") channel = "dm"; // anything other than "dm" means email
+    extras = parseExtras(parsed.extras); // only ids from the fixed menu, so the launch can be found in an extra-category list
   } catch {
     return { status: 400, body: { error: "Bad request." } };
   }
   if (typeof id !== "string" || !ID.test(id)) return { status: 400, body: { error: "Bad request." } };
   let src: DraftSource | null;
   try {
-    src = await deps.lookup(id);
+    src = await deps.lookup(id, extras);
   } catch {
     src = null;
   }

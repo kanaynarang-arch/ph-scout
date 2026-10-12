@@ -67,6 +67,17 @@ describe("isBrowserSameOrigin", () => {
   });
 });
 
+describe("handleDraft extras", () => {
+  it("passes only valid extra-category ids to the lookup (unknown ids are dropped)", async () => {
+    const seen: unknown[] = [];
+    const d = deps({ lookup: async (id, extras) => { seen.push(extras); return id === "42" ? src : null; } });
+    await handleDraft(req({ id: "42", extras: ["sales", "not-a-category", "../x"] }), d);
+    await handleDraft(req({ id: "42" }), d);
+    expect(seen[0]).toEqual(["sales"]);
+    expect(seen[1]).toEqual([]);
+  });
+});
+
 describe("handleDraft", () => {
   it("returns a draft for a known launch id", async () => {
     const out = await handleDraft(req({ id: "42" }), deps());

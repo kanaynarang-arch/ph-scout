@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withBackup } from "../lib/ai-backup";
+import { primarySignal, withBackup } from "../lib/ai-backup";
 import { callGemini, geminiConfigured } from "../lib/gemini";
 import type { Launch } from "../lib/types";
 import { openrouterJson } from "../lib/openrouter";
@@ -157,5 +157,26 @@ describe("configuration and rules", () => {
     expect(pkg).not.toMatch(/@anthropic-ai|"openai"|@ai-sdk|"ai":|@mistralai|cohere-ai|groq-sdk/i);
     const files = ["lib", "app", "app/api/scout", "app/api/send", "app/api/draft", "app/api/refresh"].flatMap((d) => readdirSync(d, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `${d}/${e.name}`));
     for (const f of files) expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["'](openai|@anthropic-ai|@ai-sdk|groq-sdk|cohere-ai|@mistralai)/);
+  });
+  it("a Google call that hangs is cut off after its own cap, so the backup still has time (primarySignal)", async () => {
+    process.env.GEMINI_API_KEY = "test-google-key"; // restored by afterEach; without it withBackup goes straight to the backup
+    const overall = new AbortController();
+    const hang = (signal: AbortSignal) => new Promise<string>((_, rej) => signal.addEventListener("abort", () => rej(new Error("aborted"))));
+    let backupSawLiveSignal = false;
+    const out = await withBackup(
+      () => hang(primarySignal(overall.signal, 30, true)),
+      async () => { backupSawLiveSignal = !overall.signal.aborted; return "from backup"; },
+      true,
+    );
+    expect(out).toBe("from backup");
+    expect(backupSawLiveSignal).toBe(true);
+  });
+  it("primarySignal leaves the caller's signal alone when no backup is configured, and still honours the caller's abort", () => {
+    const c = new AbortController();
+    expect(primarySignal(c.signal, 10, false)).toBe(c.signal);
+    const s = primarySignal(c.signal, 60_000, true);
+    expect(s.aborted).toBe(false);
+    c.abort();
+    expect(s.aborted).toBe(true);
   });
 });

@@ -758,6 +758,20 @@ describe("POST /api/send handler", () => {
     expect(out.body.notification?.status).toBe("skipped_sample");
     expect(h.f.calls.length).toBe(0);
   });
+  it("builds nothing when sending is switched off or the channel is not set up", async () => {
+    const h = harness();
+    let runs = 0;
+    const run = async () => { runs++; return data(); };
+    const lim = () => memoryLimiter(h.c.now);
+    const envs: Record<string, string | undefined>[] = [{ ...h.env, NOTIFICATIONS_ENABLED: undefined }, { ...h.env, NOTIFICATIONS_ENABLED: "false" }, { ...h.env, TELEGRAM_BOT_TOKEN: undefined }];
+    for (const env of envs) {
+      const out = await handleSend(post({ channel: "telegram" }), { run, limiterFor: lim, schedule: h.schedule, env, fetchFn: h.f.fn });
+      expect(out.status).toBe(200);
+      expect(out.body.notification?.status).toBe("off");
+    }
+    expect(runs).toBe(0);
+    expect(h.f.calls.length).toBe(0);
+  });
   it("answers 500 without sending when the list cannot be built", async () => {
     const h = harness();
     const out = await handleSend(post({ channel: "telegram" }), { run: async () => { throw new Error("boom"); }, limiterFor: () => memoryLimiter(h.c.now), schedule: h.schedule, env: h.env, fetchFn: h.f.fn });
